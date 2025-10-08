@@ -1,5 +1,6 @@
 
-import { useState, useEffect, useRef } from 'react';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Hook for managing dark mode
 export const useDarkMode = (): [string, () => void] => {
@@ -58,4 +59,68 @@ export const useInterval = (callback: () => void, delay: number | null) => {
       return () => clearInterval(id);
     }
   }, [delay]);
+};
+
+// Hook for playing sound effects using Web Audio API
+export const useSoundEffects = () => {
+    const audioContextRef = useRef<AudioContext | null>(null);
+
+    // Initialize AudioContext on first use, handling browser policies
+    const getAudioContext = () => {
+        if (!audioContextRef.current) {
+            try {
+                audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            } catch (e) {
+                console.error("Web Audio API is not supported in this browser.");
+                return null;
+            }
+        }
+        // Resume context if it was suspended (e.g., due to user interaction policy)
+        if (audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume();
+        }
+        return audioContextRef.current;
+    };
+
+    const playSound = useCallback((type: 'add' | 'success' | 'error' | 'clear') => {
+        const audioContext = getAudioContext();
+        if (!audioContext) return;
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime); // Start with a decent volume
+
+        switch (type) {
+            case 'add': // Short, higher-pitched blip
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(660, audioContext.currentTime); // A5 note
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.2);
+                break;
+            case 'success': // Ascending cheerful sound
+                oscillator.type = 'triangle';
+                oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+                oscillator.frequency.exponentialRampToValueAtTime(1046.50, audioContext.currentTime + 0.3); // C6
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.4);
+                break;
+            case 'error': // Low, short buzz
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(150, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.3);
+                break;
+            case 'clear': // Descending "whoosh" like sound
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+                oscillator.frequency.exponentialRampToValueAtTime(220, audioContext.currentTime + 0.3);
+                gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.3);
+                break;
+        }
+
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    }, []);
+
+    return { playSound };
 };

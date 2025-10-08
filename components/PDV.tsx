@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import type { User, View, Product, CartItem, Customer, PaymentMethod, SaleStatus } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
-import { useKeyboardShortcuts } from '../hooks';
+import { useKeyboardShortcuts, useSoundEffects } from '../hooks';
 import CustomerSearch from './CustomerSearch';
 import ComandasModal from './ComandasModal';
 
@@ -22,7 +22,9 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
     const [isCustomerModalOpen, setCustomerModalOpen] = useState(false);
     const [isComandasModalOpen, setComandasModalOpen] = useState(false);
     const [isFinishing, setIsFinishing] = useState(false);
+    const [scanStatus, setScanStatus] = useState<'idle' | 'success' | 'error'>('idle');
     const { addToast } = useToast();
+    const { playSound } = useSoundEffects();
 
     useEffect(() => {
         const fetchProducts = async () => {
@@ -48,21 +50,25 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
             const existingItem = prevCart.find(item => item.id === product.id);
             if (existingItem) {
                 if (existingItem.qty < product.stock) {
+                    playSound('add');
                     return prevCart.map(item => item.id === product.id ? { ...item, qty: item.qty + 1 } : item);
                 } else {
                     addToast({ message: `Estoque máximo de ${product.name} atingido.`, type: 'warning'});
+                    playSound('error');
                     return prevCart;
                 }
             } else {
                  if (product.stock > 0) {
+                     playSound('add');
                      return [...prevCart, { ...product, qty: 1 }];
                  } else {
                     addToast({ message: `${product.name} está sem estoque.`, type: 'warning'});
+                    playSound('error');
                     return prevCart;
                  }
             }
         });
-    }, [addToast]);
+    }, [addToast, playSound]);
 
     const updateCartQty = (productId: string, qty: number) => {
         setCart(prevCart => {
@@ -89,16 +95,19 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
             setCustomer(null);
             setReceivedAmount('');
             setPaymentMethod('money');
+            playSound('clear');
         }
     };
 
     const handleFinishSale = async () => {
         if (cart.length === 0) {
             addToast({ message: 'Carrinho está vazio.', type: 'warning' });
+            playSound('error');
             return;
         }
         if (paymentMethod === 'money' && (parseFloat(receivedAmount) || 0) < cartTotal) {
              addToast({ message: 'Valor recebido é menor que o total.', type: 'error' });
+             playSound('error');
              return;
         }
         
@@ -117,14 +126,41 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
                 customer_name: customer?.name,
             });
             addToast({ message: 'Venda finalizada com sucesso!', type: 'success' });
+            playSound('success');
             setCart([]);
             setCustomer(null);
             setReceivedAmount('');
             setPaymentMethod('money');
         } catch (error) {
             addToast({ message: 'Erro ao finalizar a venda.', type: 'error' });
+            playSound('error');
         } finally {
             setIsFinishing(false);
+        }
+    };
+    
+    const triggerScanFeedback = (status: 'success' | 'error') => {
+        setScanStatus(status);
+        setTimeout(() => setScanStatus('idle'), 300);
+    };
+
+    const handleBarcodeScan = (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            const code = searchTerm.trim();
+            if (!code) return;
+
+            const product = products.find(p => p.code === code);
+
+            if (product) {
+                addToCart(product);
+                triggerScanFeedback('success');
+                setSearchTerm('');
+            } else {
+                addToast({ message: 'Código de barras não encontrado.', type: 'error' });
+                playSound('error');
+                triggerScanFeedback('error');
+            }
         }
     };
 
@@ -135,9 +171,15 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
         'F9': handleClearCart,
     });
 
+    const scanStatusClasses = {
+        idle: 'bg-gray-100 dark:bg-gray-900',
+        success: 'bg-green-400/30 dark:bg-green-500/30',
+        error: 'bg-red-400/30 dark:bg-red-500/30'
+    };
+
 
     return (
-        <div className="h-screen w-full flex bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100">
+        <div className={`h-screen w-full flex text-gray-800 dark:text-gray-100 transition-colors duration-200 ${scanStatusClasses[scanStatus]}`}>
             {/* Header */}
             <header className="absolute top-0 left-0 right-0 h-16 bg-white dark:bg-gray-800 shadow-md flex items-center justify-between px-4 z-10">
                 <div className="text-xl font-bold text-primary">PDVMarket</div>
@@ -157,9 +199,10 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
                     <input
                         id="search-product"
                         type="text"
-                        placeholder="Buscar produto por nome ou código (F1)"
+                        placeholder="Buscar produto por nome ou CÓDIGO DE BARRAS (Enter para adicionar)"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
+                        onKeyDown={handleBarcodeScan}
                         className="w-full p-3 mb-4 rounded-lg bg-white dark:bg-gray-800 shadow focus:ring-2 focus:ring-primary focus:outline-none"
                     />
                     <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">

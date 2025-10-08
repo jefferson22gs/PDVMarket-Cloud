@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { User, View, Sale, SaleStatus } from '../types';
 import { api } from '../services/api';
