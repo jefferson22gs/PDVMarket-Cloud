@@ -1,5 +1,5 @@
 import { GoogleGenAI, Chat } from "@google/genai";
-import type { User, Product, Sale, Customer, SaleStatus, PaymentMethod, ChatSession, CashierSession, CashierTransaction, CartItem, CustomerTransaction } from '../types';
+import type { User, Product, Sale, Customer, SaleStatus, PaymentMethod, ChatSession, CashierSession, CashierTransaction, CartItem, CustomerTransaction, Expense } from '../types';
 
 // Mock Data
 const mockUsers: User[] = [
@@ -8,11 +8,17 @@ const mockUsers: User[] = [
 ];
 
 const mockProducts: Product[] = [
-    { id: 'p1', market_id: 1, name: 'Coca-Cola 2L', code: '7894900011517', price: 9.50, cost: 6.00, stock: 50 },
-    { id: 'p2', market_id: 1, name: 'Salgadinho Doritos', code: '7892840252609', price: 8.75, cost: 5.50, stock: 30 },
-    { id: 'p3', market_id: 1, name: 'Chocolate Lacta', code: '7622300991399', price: 6.00, cost: 3.50, stock: 120 },
-    { id: 'p4', market_id: 1, name: 'Pão de Forma', code: '7896066300762', price: 7.20, cost: 4.00, stock: 8 },
-    { id: 'p5', market_id: 1, name: 'Leite Integral 1L', code: '7891000311354', price: 4.50, cost: 3.20, stock: 40 },
+    { id: 'p1', market_id: 1, name: 'Coca-Cola 2L', code: '7894900011517', price: 9.50, cost: 6.00, stock: 50, expiry_date: '2025-12-31' },
+    { id: 'p2', market_id: 1, name: 'Salgadinho Doritos', code: '7892840252609', price: 8.75, cost: 5.50, stock: 30, expiry_date: '2025-08-20' },
+    { id: 'p3', market_id: 1, name: 'Chocolate Lacta', code: '7622300991399', price: 6.00, cost: 3.50, stock: 120, expiry_date: '2026-01-15' },
+    { id: 'p4', market_id: 1, name: 'Pão de Forma', code: '7896066300762', price: 7.20, cost: 4.00, stock: 8, expiry_date: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0] },
+    { id: 'p5', market_id: 1, name: 'Leite Integral 1L', code: '7891000311354', price: 4.50, cost: 3.20, stock: 40, expiry_date: new Date(Date.now() + 25 * 86400000).toISOString().split('T')[0] },
+];
+
+const mockExpenses: Expense[] = [
+    { id: 'e1', market_id: 1, description: 'Aluguel da Loja', amount: 1500.00, category: 'Fixo', date: new Date(Date.now() - 15 * 86400000).toISOString().split('T')[0] },
+    { id: 'e2', market_id: 1, description: 'Conta de Energia', amount: 350.75, category: 'Variável', date: new Date(Date.now() - 10 * 86400000).toISOString().split('T')[0] },
+    { id: 'e3', market_id: 1, description: 'Compra de Estoque - Fornecedor X', amount: 850.00, category: 'Custo', date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0] },
 ];
 
 const mockSales: Sale[] = Array.from({ length: 50 }, (_, i) => {
@@ -39,7 +45,7 @@ const mockSales: Sale[] = Array.from({ length: 50 }, (_, i) => {
         received: total,
         change: 0,
         status: (['pending', 'preparing', 'ready', 'completed'] as SaleStatus[])[i % 4],
-        operator_name: 'João Operador',
+        operator_name: i % 3 === 0 ? 'Dono da Loja' : 'João Operador', // Assign sales to different operators
         created_at: createdAt.toISOString(),
     };
 });
@@ -59,6 +65,7 @@ let users: User[] = [...mockUsers];
 let products: Product[] = [...mockProducts];
 let sales: Sale[] = [...mockSales];
 let customers: Customer[] = [...mockCustomers];
+let expenses: Expense[] = [...mockExpenses];
 let customerTransactions: CustomerTransaction[] = [...mockCustomerTransactions];
 let saleCounter = sales.length + 1000;
 
@@ -258,7 +265,7 @@ export const api = {
     // Operators
     async getOperators(market_id: number): Promise<User[]> {
         await delay(300);
-        return users.filter(u => u.market_id === market_id && u.type === 'operator');
+        return users.filter(u => u.market_id === market_id);
     },
     async addOperator(operatorData: Omit<User, 'id' | 'type'>): Promise<User> {
         await delay(400);
@@ -274,6 +281,29 @@ export const api = {
     async deleteOperator(id: number): Promise<void> {
         await delay(400);
         users = users.filter(u => u.id !== id);
+    },
+    
+    // --- Expenses API ---
+    async getExpenses(market_id: number): Promise<Expense[]> {
+        await delay(300);
+        return expenses
+            .filter(e => e.market_id === market_id)
+            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    },
+    async addExpense(expenseData: Omit<Expense, 'id'>): Promise<Expense> {
+        await delay(400);
+        const newExpense: Expense = { ...expenseData, id: `e${Date.now()}` };
+        expenses.push(newExpense);
+        return newExpense;
+    },
+    async updateExpense(id: string, expenseData: Partial<Omit<Expense, 'id' | 'market_id'>>): Promise<Expense> {
+        await delay(400);
+        expenses = expenses.map(e => e.id === id ? { ...e, ...expenseData } : e);
+        return expenses.find(e => e.id === id)!;
+    },
+    async deleteExpense(id: string): Promise<void> {
+        await delay(400);
+        expenses = expenses.filter(e => e.id !== id);
     },
 
     // --- Cashier API ---
@@ -391,7 +421,7 @@ class GeminiService {
 ### **Análise Financeira (Demonstração)**
 
 **Resumo Geral:**
-Seu faturamento de **R$ ${data.totalRevenue.toFixed(2)}** é sólido, com um lucro estimado de **R$ ${data.totalProfit.toFixed(2)}**. Isso indica uma boa saúde financeira para o período.
+Seu faturamento de **R$ ${data.totalRevenue.toFixed(2)}** é sólido. Após deduzir os custos dos produtos (R$ ${data.totalCosts.toFixed(2)}) e outras despesas (R$ ${data.totalExpenses.toFixed(2)}), seu lucro líquido é de **R$ ${data.totalProfit.toFixed(2)}**. Isso indica uma boa saúde financeira para o período.
 
 **Principais Produtos:**
 Seus produtos mais vendidos, como **${data.topProducts[0]?.name}**, estão gerando a maior parte da receita. Continue garantindo o estoque desses itens.
@@ -400,8 +430,9 @@ Seus produtos mais vendidos, como **${data.topProducts[0]?.name}**, estão geran
 Parece haver um aumento nas vendas por volta das **${data.salesByHour.reduce((prev: any, current: any) => (prev.sales > current.sales) ? prev : current, {hour: 'N/A'}).hour}**, considere reforçar a equipe nesse período.
 
 **Recomendações:**
-1.  **Crie Combos:** Ofereça pacotes com seus produtos mais vendidos para aumentar o ticket médio.
-2.  **Promoções Direcionadas:** Crie promoções nos horários de menor movimento para atrair mais clientes.
+1.  **Controle de Despesas:** Fique de olho nas despesas variáveis para maximizar seu lucro.
+2.  **Crie Combos:** Ofereça pacotes com seus produtos mais vendidos para aumentar o ticket médio.
+3.  **Promoções Direcionadas:** Crie promoções nos horários de menor movimento para atrair mais clientes.
 
 *Nota: Esta é uma análise de demonstração. Configure sua chave de API do Gemini para obter insights em tempo real.*
         `;
@@ -418,15 +449,17 @@ Parece haver um aumento nas vendas por volta das **${data.salesByHour.reduce((pr
 
             Data:
             - Total Revenue: R$ ${data.totalRevenue.toFixed(2)}
-            - Total Profit: R$ ${data.totalProfit.toFixed(2)}
+            - Total Costs (from sold goods): R$ ${data.totalCosts.toFixed(2)}
+            - Total Other Expenses: R$ ${data.totalExpenses.toFixed(2)}
+            - Net Profit: R$ ${data.totalProfit.toFixed(2)}
             - Top 5 Products (by revenue): ${data.topProducts.map((p: any) => `${p.name} (Revenue: R$ ${p.revenue.toFixed(2)}, Profit: R$ ${p.profit.toFixed(2)})`).join(', ')}
             - Sales by Hour: ${data.salesByHour.map((h: any) => `${h.hour}: ${h.sales} sales`).join(', ')}
 
             Based on this data, provide:
-            1.  **Resumo Geral:** A quick summary of the financial health.
+            1.  **Resumo Geral:** A quick summary of the financial health, commenting on revenue, expenses, and the final net profit.
             2.  **Principais Produtos:** Comment on the top products. Are they profitable? Any suggestions?
             3.  **Horários de Pico:** Analyze the sales by hour and suggest staffing or marketing strategies.
-            4.  **Recomendações:** Two or three concrete recommendations for the business owner.
+            4.  **Recomendações:** Two or three concrete recommendations for the business owner to increase profit or reduce costs.
         `;
 
         try {

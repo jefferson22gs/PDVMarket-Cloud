@@ -1,11 +1,9 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
-import type { User, Sale, Product } from '../types';
+import type { User, Sale, Product, Expense } from '../types';
 import { api, geminiService } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '../App';
 import { motion } from 'framer-motion';
-// FIX: Corrected import path for common components.
 import { Icon } from './common';
 
 // --- Reusable Components for Dashboard ---
@@ -45,11 +43,12 @@ const ChartContainer: React.FC<{ title: string; children: React.ReactNode }> = (
 interface DashboardProps {
     user: User;
     lowStockThreshold: number;
-    setActiveTab: (tab: 'dashboard' | 'products' | 'operators' | 'sales' | 'settings') => void;
+    setActiveTab: (tab: 'dashboard' | 'products' | 'operators' | 'sales' | 'settings' | 'expenses') => void;
 }
 const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiveTab }) => {
     const [sales, setSales] = useState<Sale[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
     const [aiInsight, setAiInsight] = useState('');
     const [isInsightLoading, setIsInsightLoading] = useState(false);
     const { addToast } = useToast();
@@ -57,10 +56,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const salesData = await api.getSales(user.market_id);
-                const productsData = await api.getProducts(user.market_id);
+                const [salesData, productsData, expensesData] = await Promise.all([
+                    api.getSales(user.market_id),
+                    api.getProducts(user.market_id),
+                    api.getExpenses(user.market_id)
+                ]);
                 setSales(salesData);
                 setProducts(productsData);
+                setExpenses(expensesData);
             } catch (error) {
                 addToast({ message: 'Erro ao carregar dados do dashboard.', type: 'error'});
             }
@@ -70,16 +73,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
 
     const dashboardData = useMemo(() => {
         const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
-        const totalProfit = sales.reduce((sum, sale) => {
-            const saleProfit = sale.items.reduce((itemSum, item) => {
+        const totalCosts = sales.reduce((sum, sale) => {
+            const saleCost = sale.items.reduce((itemSum, item) => {
                 const product = products.find(p => p.id === item.id);
                 const cost = product ? product.cost : 0;
-                return itemSum + (item.price - cost) * item.qty;
+                return itemSum + cost * item.qty;
             }, 0);
-            return sum + saleProfit;
+            return sum + saleCost;
         }, 0);
+        const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+        const totalProfit = totalRevenue - totalCosts - totalExpenses;
 
-        // Fix: Explicitly type the accumulator to prevent properties from being inferred as 'unknown'.
+
         const salesByDay = sales.reduce((acc: { [key: string]: number }, sale) => {
             const date = new Date(sale.created_at).toLocaleDateString('pt-BR');
             acc[date] = (acc[date] || 0) + sale.total;
@@ -90,7 +95,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
             .map(([name, Vendas]) => ({ name, Vendas: parseFloat(Vendas.toFixed(2)) }))
             .reverse();
         
-        // Fix: Explicitly type the accumulator to prevent properties from being inferred as 'unknown'.
         const salesByHour = sales.reduce((acc: {[key: string]: number}, sale) => {
             const hour = new Date(sale.created_at).getHours().toString().padStart(2, '0');
             acc[hour] = (acc[hour] || 0) + 1;
@@ -102,7 +106,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
              .sort((a,b) => a.hour.localeCompare(b.hour));
 
 
-        // Fix: Explicitly type the accumulator to prevent properties from being inferred as 'unknown'.
         const productSales = sales.flatMap(s => s.items).reduce((acc: { [key: string]: number }, item) => {
             acc[item.id] = (acc[item.id] || 0) + item.price * item.qty;
             return acc;
@@ -127,8 +130,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
         const lowStockProducts = products.filter(p => p.stock <= lowStockThreshold);
 
 
-        return { totalRevenue, totalProfit, chartData, topProducts, salesByHourChart, topProductsForAI, lowStockProducts };
-    }, [sales, products, lowStockThreshold]);
+        return { totalRevenue, totalProfit, totalExpenses, totalCosts, chartData, topProducts, salesByHourChart, topProductsForAI, lowStockProducts };
+    }, [sales, products, expenses, lowStockThreshold]);
 
     const handleGetInsights = async () => {
         setIsInsightLoading(true);
@@ -136,6 +139,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
             const insight = await geminiService.getFinancialInsights({
                 totalRevenue: dashboardData.totalRevenue,
                 totalProfit: dashboardData.totalProfit,
+                totalCosts: dashboardData.totalCosts,
+                totalExpenses: dashboardData.totalExpenses,
                 topProducts: dashboardData.topProductsForAI,
                 salesByHour: dashboardData.salesByHourChart,
             });
@@ -152,8 +157,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard title="Vendas Totais (30d)" value={`R$ ${dashboardData.totalRevenue.toFixed(2)}`} />
-                <StatCard title="Lucro Estimado (30d)" value={`R$ ${dashboardData.totalProfit.toFixed(2)}`} />
-                <StatCard title="Total de Vendas" value={sales.length.toString()} />
+                <StatCard title="Despesas Totais (30d)" value={`R$ ${dashboardData.totalExpenses.toFixed(2)}`} onClick={() => setActiveTab('expenses')}/>
+                <StatCard title="Lucro Líquido (30d)" value={`R$ ${dashboardData.totalProfit.toFixed(2)}`} />
                 <StatCard 
                     title="Estoque Baixo" 
                     value={dashboardData.lowStockProducts.length.toString()} 

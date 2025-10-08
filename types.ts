@@ -26,6 +26,7 @@ export interface Product {
     price: number;
     cost: number;
     stock: number;
+    expiry_date?: string; // YYYY-MM-DD format
 }
 
 export interface CartItem extends Product {
@@ -116,4 +117,22 @@ export interface CashierSession {
     difference?: number;
     status: 'open' | 'closed';
     transactions: CashierTransaction[];
+}
+
+export interface Expense {
+    id: string;
+    market_id: number;
+    description: string;
+    amount: number;
+    category: string;
+    date: string; // YYYY-MM-DD format
+}
+
+export interface OperatorPerformance {
+    operatorName: string;
+    totalRevenue: number;
+    totalProfit: number;
+    saleCount: number;
+    averageTicket: number;
+    itemsSold: number;
 }

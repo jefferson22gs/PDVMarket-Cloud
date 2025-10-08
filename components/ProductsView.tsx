@@ -1,9 +1,7 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, Product } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
-// FIX: Corrected import path for common components.
 import { Modal, Icon } from './common';
 
 interface ProductsViewProps {
@@ -18,6 +16,7 @@ const ProductForm: React.FC<{ product: Partial<Product> | null; onSave: (product
         price: product?.price || 0,
         cost: product?.cost || 0,
         stock: product?.stock || 0,
+        expiry_date: product?.expiry_date || '',
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +51,10 @@ const ProductForm: React.FC<{ product: Partial<Product> | null; onSave: (product
                  <div>
                     <label htmlFor="stock" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Estoque</label>
                     <input type="number" name="stock" id="stock" value={formData.stock} onChange={handleChange} required min="0" step="1" className="mt-1 block w-full rounded-md bg-white/10 dark:bg-black/20 border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2"/>
+                </div>
+                 <div>
+                    <label htmlFor="expiry_date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Data de Validade</label>
+                    <input type="date" name="expiry_date" id="expiry_date" value={formData.expiry_date} onChange={handleChange} className="mt-1 block w-full rounded-md bg-white/10 dark:bg-black/20 border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2"/>
                 </div>
             </div>
             <div className="flex justify-end gap-4 pt-4">
@@ -156,26 +159,40 @@ const ProductsView: React.FC<ProductsViewProps> = ({ user, lowStockThreshold }) 
                     <thead className="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
                         <tr>
                             <th scope="col" className="px-6 py-3">Produto</th>
-                            <th scope="col" className="px-6 py-3">Código</th>
-                            <th scope="col" className="px-6 py-3">Preço</th>
-                            <th scope="col" className="px-6 py-3">Custo</th>
+                            <th scope="col" className="px-6 py-3">Preço/Custo</th>
                             <th scope="col" className="px-6 py-3">Estoque</th>
+                            <th scope="col" className="px-6 py-3">Validade</th>
                             <th scope="col" className="px-6 py-3">Status</th>
                             <th scope="col" className="px-6 py-3">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
                         {isLoading ? (
-                            <tr><td colSpan={7} className="text-center p-6">Carregando...</td></tr>
+                            <tr><td colSpan={6} className="text-center p-6">Carregando...</td></tr>
                         ) : filteredProducts.map(product => {
                             const isLowStock = product.stock <= lowStockThreshold;
+                            const expiryDate = product.expiry_date ? new Date(`${product.expiry_date}T00:00:00`) : null;
+                            const today = new Date();
+                            today.setHours(0,0,0,0);
+                            const thirtyDaysFromNow = new Date(today);
+                            thirtyDaysFromNow.setDate(today.getDate() + 30);
+                            
+                            let expiryStatus = 'ok';
+                            let expiryText = expiryDate ? expiryDate.toLocaleDateString('pt-BR') : 'N/A';
+                            if (expiryDate) {
+                                if (expiryDate < today) {
+                                    expiryStatus = 'expired';
+                                } else if (expiryDate <= thirtyDaysFromNow) {
+                                    expiryStatus = 'nearing';
+                                }
+                            }
+                            
                             return (
-                                <tr key={product.id} className={`border-b dark:border-gray-700 ${isLowStock ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-white dark:bg-gray-800'}`}>
-                                    <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{product.name}</th>
-                                    <td className="px-6 py-4">{product.code}</td>
-                                    <td className="px-6 py-4">R$ {product.price.toFixed(2)}</td>
-                                    <td className="px-6 py-4">R$ {product.cost.toFixed(2)}</td>
+                                <tr key={product.id} className={`border-b dark:border-gray-700 ${isLowStock || expiryStatus !== 'ok' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-white dark:bg-gray-800'}`}>
+                                    <th scope="row" className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap dark:text-white">{product.name} <br/><span className="text-xs font-normal text-gray-500">{product.code}</span></th>
+                                    <td className="px-6 py-4">R$ {product.price.toFixed(2)}<br/><span className="text-xs text-gray-500">Custo: R$ {product.cost.toFixed(2)}</span></td>
                                     <td className={`px-6 py-4 font-bold ${isLowStock ? 'text-amber-600 dark:text-amber-400' : ''}`}>{product.stock}</td>
+                                    <td className={`px-6 py-4 font-medium ${expiryStatus === 'expired' ? 'text-red-500' : expiryStatus === 'nearing' ? 'text-amber-500' : ''}`}>{expiryText}</td>
                                     <td className="px-6 py-4">
                                         {isLowStock ? (
                                             <span className="flex items-center text-xs font-medium text-amber-800 bg-amber-100 dark:bg-amber-900 dark:text-amber-300 py-1 px-2 rounded-full">
