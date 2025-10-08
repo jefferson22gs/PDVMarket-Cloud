@@ -1,5 +1,10 @@
 
 
+
+
+
+
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // Hook for managing dark mode
@@ -123,4 +128,33 @@ export const useSoundEffects = () => {
     }, []);
 
     return { playSound };
+};
+
+// Hook to debounce a callback function
+export const useDebouncedCallback = <A extends any[]>(
+  callback: (...args: A) => void,
+  delay: number
+) => {
+  // Fix: Initialize useRef with null to provide an argument, resolving the error.
+  const timeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Cleanup the timeout if the component unmounts
+    return () => {
+      // window.clearTimeout handles null/undefined values gracefully.
+      window.clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
+  const debouncedCallback = useCallback(
+    (...args: A) => {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = window.setTimeout(() => {
+        callback(...args);
+      }, delay);
+    },
+    [callback, delay]
+  );
+
+  return debouncedCallback;
 };

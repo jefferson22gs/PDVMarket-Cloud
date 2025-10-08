@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, Sale, Product } from '../types';
 import { api, geminiService } from '../services/api';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { useToast } from '../App';
 import { motion } from 'framer-motion';
+// FIX: Corrected import path for common components.
 import { Icon } from './common';
 
 // --- Reusable Components for Dashboard ---

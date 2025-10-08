@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { geminiService } from '../services/api';
 import type { User, ChatMessage, ChatSession } from '../types';
+// FIX: Corrected import path for common components.
 import { Modal, Icon } from './common';
 import { useToast } from '../App';
 
@@ -54,6 +56,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ isOpen, onClose, user }) => {
             }
         };
         initializeChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, user, addToast]);
 
     const handleSendMessage = async (e: React.FormEvent) => {

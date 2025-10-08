@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, Product } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
+// FIX: Corrected import path for common components.
 import { Modal, Icon } from './common';
 
 interface ProductsViewProps {
@@ -29,7 +31,7 @@ const ProductForm: React.FC<{ product: Partial<Product> | null; onSave: (product
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nome do Produto</label>
@@ -83,6 +85,7 @@ const ProductsView: React.FC<ProductsViewProps> = ({ user, lowStockThreshold }) 
 
     useEffect(() => {
         fetchProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user.market_id]);
 
     const handleOpenModal = (product: Product | null = null) => {

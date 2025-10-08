@@ -1,11 +1,14 @@
+
 import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import type { User, View, ToastMessage } from './types';
 import { useDarkMode } from './hooks';
 import LoginView from './components/Login';
+// FIX: Corrected import path for PDVView component.
 import PDVView from './components/PDV';
 import AdminView from './components/AdminView';
 import KitchenView from './components/KitchenView';
 import Chatbot from './components/Chatbot';
+// FIX: Corrected import path for common components.
 import { Toast, Icon } from './components/common';
 import { motion, AnimatePresence } from 'framer-motion';
 

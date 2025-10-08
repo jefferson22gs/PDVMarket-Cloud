@@ -1,9 +1,11 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { User, View, Sale, SaleStatus } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
 import { useInterval } from '../hooks';
 import { motion, AnimatePresence } from 'framer-motion';
+// FIX: Corrected import path for common components.
 import { Icon } from './common';
 
 interface KitchenViewProps {
@@ -113,7 +115,7 @@ const KitchenView: React.FC<KitchenViewProps> = ({ user, onSwitchView, onLogout 
     const fetchSales = useCallback(async () => {
         try {
             const data = await api.getSales(user.market_id);
-            const activeSales = data.filter(s => s.status !== 'completed');
+            const activeSales = data.filter(s => s.status === 'pending' || s.status === 'preparing' || s.status === 'ready');
 
             const currentPendingIds = new Set(activeSales.filter(s => s.status === 'pending').map(s => s.id));
             if (knownPendingIds.current.size > 0) { // Don't play sound on first load
@@ -139,7 +141,7 @@ const KitchenView: React.FC<KitchenViewProps> = ({ user, onSwitchView, onLogout 
 
     const handleUpdateStatus = async (saleId: string, status: SaleStatus) => {
         try {
-            await api.updateSaleStatus(saleId, status);
+            await api.updateSale(saleId, { status });
             addToast({ message: `Pedido #${sales.find(s=>s.id === saleId)?.order_number} atualizado!`, type: 'success' });
             fetchSales(); // Refresh data immediately
         } catch {

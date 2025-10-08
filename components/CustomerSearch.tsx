@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, Customer } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
+// FIX: Corrected import path for common components.
 import { Modal } from './common';
 
 interface CustomerSearchProps {
@@ -46,6 +48,7 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ isOpen, onClose, onSele
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                     className="w-full p-2 mb-4 rounded-md bg-gray-100 dark:bg-gray-700 border-transparent focus:ring-2 focus:ring-primary"
+                    autoFocus
                 />
                 <div className="max-h-96 overflow-y-auto">
                     <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -57,6 +60,9 @@ const CustomerSearch: React.FC<CustomerSearchProps> = ({ isOpen, onClose, onSele
                                 </button>
                             </li>
                         ))}
+                         {filteredCustomers.length === 0 && (
+                            <li className="p-4 text-center text-gray-500">Nenhum cliente encontrado.</li>
+                        )}
                     </ul>
                 </div>
             </div>

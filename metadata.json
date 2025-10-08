@@ -1,5 +1,7 @@
 {
   "name": "PDVMarket Cloud Premium",
   "description": "A comprehensive Point of Sale (PDV) and Admin system rebuilt in React with a modernized design. Features include a real-time analytics dashboard with AI-powered financial insights from Gemini, dark mode, keyboard shortcuts, and a fluid, responsive user interface.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera"
+  ]
 }

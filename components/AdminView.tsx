@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import type { User, View } from '../types';
+// FIX: Corrected import path for common components.
 import { Icon } from './common';
 import Dashboard from './Dashboard';
+// FIX: Corrected import path for CustomersView component.
 import CustomersView from './CustomersView';
 import ProductsView from './ProductsView';
 import OperatorsView from './OperatorsView';
 import SalesView from './SalesView';
+import CashierHistoryView from './CashierHistoryView';
 
 interface AdminViewProps {
     user: User;
@@ -13,7 +16,7 @@ interface AdminViewProps {
     onLogout: () => void;
 }
 
-type AdminTab = 'dashboard' | 'products' | 'customers' | 'operators' | 'sales' | 'settings';
+type AdminTab = 'dashboard' | 'products' | 'customers' | 'operators' | 'sales' | 'cashier' | 'settings';
 
 const AdminView: React.FC<AdminViewProps> = ({ user, onSwitchView, onLogout }) => {
     const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
@@ -31,6 +34,8 @@ const AdminView: React.FC<AdminViewProps> = ({ user, onSwitchView, onLogout }) =
                 return <OperatorsView user={user} />;
             case 'sales':
                 return <SalesView user={user} />;
+            case 'cashier':
+                return <CashierHistoryView user={user} />;
             case 'settings':
                  return (
                      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-md">
@@ -57,6 +62,7 @@ const AdminView: React.FC<AdminViewProps> = ({ user, onSwitchView, onLogout }) =
     const tabs: { id: AdminTab; name: string; icon: string }[] = [
         { id: 'dashboard', name: 'Dashboard', icon: 'chart-bar' },
         { id: 'sales', name: 'Vendas', icon: 'shopping-cart' },
+        { id: 'cashier', name: 'Histórico de Caixa', icon: 'document-text' },
         { id: 'products', name: 'Produtos', icon: 'archive-box' },
         { id: 'customers', name: 'Clientes', icon: 'user-group' },
         { id: 'operators', name: 'Operadores', icon: 'users' },

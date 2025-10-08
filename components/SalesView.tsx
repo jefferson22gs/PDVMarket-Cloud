@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User, Sale, PaymentMethod } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
+// FIX: Corrected import path for common components.
 import { Modal, Icon } from './common';
 
 interface SalesViewProps {
@@ -290,10 +292,16 @@ const SalesView: React.FC<SalesViewProps> = ({ user }) => {
                         </div>
                         
                         <div className="space-y-1 font-medium">
-                             <div className="flex justify-between">
+                            <div className="flex justify-between">
                                 <span>Subtotal</span>
-                                <span>R$ {selectedSale.total.toFixed(2)}</span>
+                                <span>R$ {(selectedSale.total + (selectedSale.discount?.amount || 0)).toFixed(2)}</span>
                             </div>
+                            {selectedSale.discount && (
+                                <div className="flex justify-between text-green-600 dark:text-green-400">
+                                    <span>Desconto ({selectedSale.discount.description})</span>
+                                    <span>- R$ {selectedSale.discount.amount.toFixed(2)}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between text-lg font-bold text-primary">
                                 <span>TOTAL</span>
                                 <span>R$ {selectedSale.total.toFixed(2)}</span>

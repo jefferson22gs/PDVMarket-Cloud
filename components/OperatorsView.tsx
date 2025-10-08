@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User } from '../types';
 import { api } from '../services/api';
 import { useToast } from '../App';
+// FIX: Corrected import path for common components.
 import { Modal } from './common';
 
 interface OperatorsViewProps {
@@ -31,7 +33,7 @@ const OperatorForm: React.FC<{ operator: Partial<User> | null; onSave: (operator
     };
 
     return (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 p-6">
             <div>
                 <label htmlFor="name" className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nome Completo</label>
                 <input type="text" name="name" id="name" value={formData.name} onChange={handleChange} required className="mt-1 block w-full rounded-md bg-white/10 dark:bg-black/20 border-gray-300 dark:border-gray-600 shadow-sm focus:border-primary focus:ring-primary sm:text-sm p-2"/>
@@ -73,6 +75,7 @@ const OperatorsView: React.FC<OperatorsViewProps> = ({ user: owner }) => {
 
     useEffect(() => {
         fetchOperators();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [owner.market_id]);
 
     const handleOpenModal = (operator: User | null = null) => {

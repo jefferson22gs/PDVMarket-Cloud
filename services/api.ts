@@ -1,5 +1,5 @@
 import { GoogleGenAI, Chat } from "@google/genai";
-import type { User, Product, Sale, Customer, SaleStatus, PaymentMethod, ChatSession } from '../types';
+import type { User, Product, Sale, Customer, SaleStatus, PaymentMethod, ChatSession, CashierSession, CashierTransaction, CartItem, CustomerTransaction } from '../types';
 
 // Mock Data
 const mockUsers: User[] = [
@@ -45,17 +45,28 @@ const mockSales: Sale[] = Array.from({ length: 50 }, (_, i) => {
 });
 
 const mockCustomers: Customer[] = [
-    { id: 1, market_id: 1, name: 'Maria Silva', email: 'maria@email.com', phone: '11999998888', cpf: '123.456.789-00' },
-    { id: 2, market_id: 1, name: 'José Santos', email: 'jose@email.com', phone: '11988887777', cpf: '987.654.321-00' },
+    { id: 1, market_id: 1, name: 'Maria Silva', email: 'maria@email.com', phone: '11999998888', cpf: '123.456.789-00', points: 150, credit_limit: 200.00, credit_balance: 55.50 },
+    { id: 2, market_id: 1, name: 'José Santos', email: 'jose@email.com', phone: '11988887777', cpf: '987.654.321-00', points: 85, credit_limit: 100.00, credit_balance: 0.00 },
 ];
 
+let mockCustomerTransactions: CustomerTransaction[] = [
+    { id: 'ct1', customer_id: 1, type: 'purchase', amount: 35.50, timestamp: new Date(Date.now() - 86400000 * 5).toISOString(), related_sale_id: 's-mock-1' },
+    { id: 'ct2', customer_id: 1, type: 'purchase', amount: 20.00, timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), related_sale_id: 's-mock-2' },
+];
 
 // --- API Simulation ---
 let users: User[] = [...mockUsers];
 let products: Product[] = [...mockProducts];
 let sales: Sale[] = [...mockSales];
 let customers: Customer[] = [...mockCustomers];
+let customerTransactions: CustomerTransaction[] = [...mockCustomerTransactions];
 let saleCounter = sales.length + 1000;
+
+// --- MOCK DATA FOR CASHIER ---
+let cashierSessions: CashierSession[] = [];
+let activeCashierSession: CashierSession | null = null;
+let sessionCounter = 1;
+
 
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
@@ -63,6 +74,10 @@ export const api = {
     async login(email: string, pass: string): Promise<User | null> {
         await delay(500);
         const user = users.find(u => u.email === email && u.password === pass);
+        // Reset cashier on login for mock purposes
+        if (user && activeCashierSession?.operator_id !== user.id) {
+            activeCashierSession = null;
+        }
         return user ? { ...user } : null;
     },
 
@@ -92,6 +107,27 @@ export const api = {
         await delay(300);
         return sales.filter(s => s.market_id === market_id).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     },
+    async getOpenSales(market_id: number): Promise<Sale[]> {
+        await delay(300);
+        return sales.filter(s => s.market_id === market_id && s.status !== 'completed').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    },
+    async createOpenSale(saleData: Pick<Sale, 'market_id' | 'operator_name' | 'customer_name'>): Promise<Sale> {
+        await delay(500);
+        const newSale: Sale = {
+            ...saleData,
+            id: `s${Date.now()}`,
+            created_at: new Date().toISOString(),
+            order_number: ++saleCounter,
+            status: 'open',
+            items: [],
+            total: 0,
+            payment_method: 'money',
+            received: 0,
+            change: 0,
+        };
+        sales.unshift(newSale);
+        return newSale;
+    },
     async addSale(saleData: Omit<Sale, 'id' | 'created_at' | 'order_number'>): Promise<Sale> {
         await delay(500);
         const newSale: Sale = {
@@ -100,6 +136,25 @@ export const api = {
             created_at: new Date().toISOString(),
             order_number: ++saleCounter,
         };
+        
+        // Handle credit account sales
+        if (newSale.payment_method === 'credit_account') {
+            const customer = customers.find(c => c.id === newSale.customer_id);
+            if (!customer) throw new Error("Cliente não encontrado para venda a prazo.");
+            if (customer.credit_balance + newSale.total > customer.credit_limit) {
+                throw new Error("Limite de crédito excedido.");
+            }
+            customer.credit_balance += newSale.total;
+            customerTransactions.unshift({
+                id: `ct-sale-${newSale.id}`,
+                customer_id: customer.id,
+                type: 'purchase',
+                amount: newSale.total,
+                timestamp: newSale.created_at,
+                related_sale_id: newSale.id
+            });
+        }
+        
         sales.unshift(newSale); // Add to the beginning
         // Update stock
         newSale.items.forEach(item => {
@@ -110,10 +165,36 @@ export const api = {
         });
         return newSale;
     },
-    async updateSaleStatus(id: string, status: SaleStatus): Promise<Sale> {
+    async updateSale(id: string, saleData: Partial<Omit<Sale, 'id' | 'market_id'>>): Promise<Sale> {
         await delay(200);
-        sales = sales.map(s => s.id === id ? { ...s, status } : s);
-        return sales.find(s => s.id === id)!;
+        let saleToUpdate: Sale | undefined;
+        const originalSale = sales.find(s => s.id === id);
+
+        sales = sales.map(s => {
+            if (s.id === id) {
+                saleToUpdate = { ...s, ...saleData };
+                return saleToUpdate;
+            }
+            return s;
+        });
+
+        if (!saleToUpdate) throw new Error("Sale not found");
+        
+        // Handle stock update on completion
+        if (saleData.status === 'completed' && originalSale?.status !== 'completed') {
+             saleToUpdate.items.forEach(item => {
+                const product = products.find(p => p.id === item.id);
+                if (product) {
+                    product.stock -= item.qty;
+                }
+            });
+        }
+        
+        return saleToUpdate;
+    },
+     async deleteSale(id: string): Promise<void> {
+        await delay(400);
+        sales = sales.filter(s => s.id !== id);
     },
 
     // Customers
@@ -121,21 +202,58 @@ export const api = {
         await delay(300);
         return customers.filter(c => c.market_id === market_id);
     },
-    async addCustomer(customerData: Omit<Customer, 'id'>): Promise<Customer> {
+    async addCustomer(customerData: Omit<Customer, 'id' | 'points' | 'credit_balance'>): Promise<Customer> {
         await delay(400);
-        const newCustomer: Customer = { ...customerData, id: Date.now() };
+        const newCustomer: Customer = { ...customerData, id: Date.now(), points: 0, credit_balance: 0 };
         customers.push(newCustomer);
         return newCustomer;
     },
     async updateCustomer(id: number, customerData: Partial<Omit<Customer, 'id' | 'market_id'>>): Promise<Customer> {
         await delay(400);
-        customers = customers.map(c => c.id === id ? { ...c, ...customerData } : c);
-        return customers.find(c => c.id === id)!;
+        let updatedCustomer: Customer | undefined;
+        customers = customers.map(c => {
+             if (c.id === id) {
+                const currentPoints = c.points || 0;
+                const pointsChange = customerData.points || 0;
+                const newPoints = pointsChange < 0 ? currentPoints + pointsChange : currentPoints + pointsChange;
+                
+                updatedCustomer = { ...c, ...customerData, points: newPoints };
+                return updatedCustomer;
+             }
+             return c;
+        });
+        
+        if (!updatedCustomer) throw new Error('Customer not found');
+        return updatedCustomer;
     },
     async deleteCustomer(id: number): Promise<void> {
         await delay(400);
         customers = customers.filter(c => c.id !== id);
     },
+    async addCustomerPayment(customerId: number, amount: number): Promise<Customer> {
+        await delay(500);
+        const customer = customers.find(c => c.id === customerId);
+        if (!customer) throw new Error("Cliente não encontrado.");
+        if (amount <= 0) throw new Error("Valor do pagamento deve ser positivo.");
+
+        customer.credit_balance -= amount;
+        if (customer.credit_balance < 0) customer.credit_balance = 0;
+
+        customerTransactions.unshift({
+            id: `ct-payment-${Date.now()}`,
+            customer_id: customerId,
+            type: 'payment',
+            amount: amount,
+            timestamp: new Date().toISOString(),
+            notes: "Pagamento recebido"
+        });
+        return { ...customer };
+    },
+    async getCustomerTransactions(customerId: number): Promise<CustomerTransaction[]> {
+        await delay(300);
+        return customerTransactions.filter(t => t.customer_id === customerId).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    },
+
 
     // Operators
     async getOperators(market_id: number): Promise<User[]> {
@@ -156,6 +274,97 @@ export const api = {
     async deleteOperator(id: number): Promise<void> {
         await delay(400);
         users = users.filter(u => u.id !== id);
+    },
+
+    // --- Cashier API ---
+    async getActiveCashierSession(operator_id: number): Promise<CashierSession | null> {
+        await delay(200);
+        if (activeCashierSession && activeCashierSession.operator_id === operator_id) {
+            return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
+        }
+        return null;
+    },
+
+    async startCashierSession(data: { operator_id: number, operator_name: string, market_id: number, opening_balance: number }): Promise<CashierSession> {
+        await delay(500);
+        if (activeCashierSession) {
+            throw new Error("Já existe uma sessão de caixa aberta.");
+        }
+        const newSession: CashierSession = {
+            id: `cs${sessionCounter++}`,
+            market_id: data.market_id,
+            operator_id: data.operator_id,
+            operator_name: data.operator_name,
+            start_time: new Date().toISOString(),
+            opening_balance: data.opening_balance,
+            status: 'open',
+            transactions: [],
+            calculated_sales_total: 0,
+        };
+        activeCashierSession = newSession;
+        return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
+    },
+
+    async addCashierTransaction(sessionId: string, transaction: Omit<CashierTransaction, 'id' | 'timestamp'>): Promise<CashierSession> {
+        await delay(100);
+        if (!activeCashierSession || activeCashierSession.id !== sessionId) {
+            throw new Error("Sessão de caixa não encontrada ou inativa.");
+        }
+        const newTransaction: CashierTransaction = {
+            ...transaction,
+            id: `ct${Date.now()}`,
+            timestamp: new Date().toISOString(),
+        };
+        activeCashierSession.transactions.push(newTransaction);
+        return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
+    },
+
+    async closeCashierSession(sessionId: string, closing_balance: number): Promise<CashierSession> {
+        await delay(500);
+        if (!activeCashierSession || activeCashierSession.id !== sessionId) {
+            throw new Error("Sessão de caixa não encontrada ou inativa.");
+        }
+        
+        const suprimentos = activeCashierSession.transactions
+            .filter(t => t.type === 'suprimento')
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const sangrias = activeCashierSession.transactions
+            .filter(t => t.type === 'sangria')
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const salesInCash = activeCashierSession.transactions
+            .filter(t => t.type === 'sale' && t.payment_method === 'money')
+            .reduce((sum, t) => sum + t.amount, 0);
+            
+        const allSalesTotal = activeCashierSession.transactions
+            .filter(t => t.type === 'sale')
+            .reduce((sum, t) => sum + t.amount, 0);
+
+        const calculated_closing_balance = activeCashierSession.opening_balance + salesInCash + suprimentos - sangrias;
+        const difference = closing_balance - calculated_closing_balance;
+
+        const closedSession: CashierSession = {
+            ...activeCashierSession,
+            status: 'closed',
+            end_time: new Date().toISOString(),
+            closing_balance,
+            calculated_closing_balance,
+            calculated_sales_total: allSalesTotal,
+            difference,
+        };
+        
+        cashierSessions.push(closedSession);
+        activeCashierSession = null;
+
+        return closedSession;
+    },
+    
+    async getCashierHistory(market_id: number): Promise<CashierSession[]> {
+        await delay(400);
+        return cashierSessions
+            .filter(cs => cs.market_id === market_id)
+            .sort((a,b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
     },
 };
 
