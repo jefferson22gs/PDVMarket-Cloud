@@ -117,7 +117,8 @@ const ProductsView: React.FC<ProductsViewProps> = ({ user, lowStockThreshold }) 
         }
     };
 
-    const handleDeleteProduct = async (productId: string) => {
+    // FIX: Changed productId type from string to number.
+    const handleDeleteProduct = async (productId: number) => {
         if (window.confirm('Tem certeza que deseja excluir este produto?')) {
             try {
                 await api.deleteProduct(productId);

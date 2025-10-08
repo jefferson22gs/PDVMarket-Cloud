@@ -1,421 +1,258 @@
 import { GoogleGenAI, Chat } from "@google/genai";
-import type { User, Product, Sale, Customer, SaleStatus, PaymentMethod, ChatSession, CashierSession, CashierTransaction, CartItem, CustomerTransaction, Expense } from '../types';
+// FIX: Import ChatSession type.
+import type { User, Product, Sale, Customer, CustomerTransaction, Expense, CashierSession, CashierTransaction, ChatSession } from '../types';
+import { supabase } from './supabaseClient';
+import { env } from '../env';
 
-// Mock Data
-const mockUsers: User[] = [
-    { id: 1, name: 'Dono da Loja', email: 'dono@pdv.com', password: '123', type: 'owner', market_id: 1 },
-    { id: 2, name: 'João Operador', email: 'joao@pdv.com', password: '123', type: 'operator', market_id: 1 },
-];
-
-const mockProducts: Product[] = [
-    { id: 'p1', market_id: 1, name: 'Coca-Cola 2L', code: '7894900011517', price: 9.50, cost: 6.00, stock: 50, expiry_date: '2025-12-31' },
-    { id: 'p2', market_id: 1, name: 'Salgadinho Doritos', code: '7892840252609', price: 8.75, cost: 5.50, stock: 30, expiry_date: '2025-08-20' },
-    { id: 'p3', market_id: 1, name: 'Chocolate Lacta', code: '7622300991399', price: 6.00, cost: 3.50, stock: 120, expiry_date: '2026-01-15' },
-    { id: 'p4', market_id: 1, name: 'Pão de Forma', code: '7896066300762', price: 7.20, cost: 4.00, stock: 8, expiry_date: new Date(Date.now() + 5 * 86400000).toISOString().split('T')[0] },
-    { id: 'p5', market_id: 1, name: 'Leite Integral 1L', code: '7891000311354', price: 4.50, cost: 3.20, stock: 40, expiry_date: new Date(Date.now() + 25 * 86400000).toISOString().split('T')[0] },
-];
-
-const mockExpenses: Expense[] = [
-    { id: 'e1', market_id: 1, description: 'Aluguel da Loja', amount: 1500.00, category: 'Fixo', date: new Date(Date.now() - 15 * 86400000).toISOString().split('T')[0] },
-    { id: 'e2', market_id: 1, description: 'Conta de Energia', amount: 350.75, category: 'Variável', date: new Date(Date.now() - 10 * 86400000).toISOString().split('T')[0] },
-    { id: 'e3', market_id: 1, description: 'Compra de Estoque - Fornecedor X', amount: 850.00, category: 'Custo', date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0] },
-];
-
-const mockSales: Sale[] = Array.from({ length: 50 }, (_, i) => {
-    const itemsCount = Math.floor(Math.random() * 3) + 1;
-    const items = Array.from({ length: itemsCount }, () => {
-        const product = mockProducts[Math.floor(Math.random() * mockProducts.length)];
-        const qty = Math.floor(Math.random() * 3) + 1;
-        return { id: product.id, name: product.name, price: product.price, qty };
-    });
-    const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
-    const paymentMethods: PaymentMethod[] = ['money', 'credit', 'debit', 'pix'];
-    const createdAt = new Date();
-    createdAt.setDate(createdAt.getDate() - (i % 30));
-    createdAt.setHours(Math.floor(Math.random() * 24));
-
-
-    return {
-        id: `s${i + 1}`,
-        market_id: 1,
-        order_number: 1001 + i,
-        items,
-        total,
-        payment_method: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
-        received: total,
-        change: 0,
-        status: (['pending', 'preparing', 'ready', 'completed'] as SaleStatus[])[i % 4],
-        operator_name: i % 3 === 0 ? 'Dono da Loja' : 'João Operador', // Assign sales to different operators
-        created_at: createdAt.toISOString(),
-    };
-});
-
-const mockCustomers: Customer[] = [
-    { id: 1, market_id: 1, name: 'Maria Silva', email: 'maria@email.com', phone: '11999998888', cpf: '123.456.789-00', points: 150, credit_limit: 200.00, credit_balance: 55.50 },
-    { id: 2, market_id: 1, name: 'José Santos', email: 'jose@email.com', phone: '11988887777', cpf: '987.654.321-00', points: 85, credit_limit: 100.00, credit_balance: 0.00 },
-];
-
-let mockCustomerTransactions: CustomerTransaction[] = [
-    { id: 'ct1', customer_id: 1, type: 'purchase', amount: 35.50, timestamp: new Date(Date.now() - 86400000 * 5).toISOString(), related_sale_id: 's-mock-1' },
-    { id: 'ct2', customer_id: 1, type: 'purchase', amount: 20.00, timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), related_sale_id: 's-mock-2' },
-];
-
-// --- API Simulation ---
-let users: User[] = [...mockUsers];
-let products: Product[] = [...mockProducts];
-let sales: Sale[] = [...mockSales];
-let customers: Customer[] = [...mockCustomers];
-let expenses: Expense[] = [...mockExpenses];
-let customerTransactions: CustomerTransaction[] = [...mockCustomerTransactions];
-let saleCounter = sales.length + 1000;
-
-// --- MOCK DATA FOR CASHIER ---
-let cashierSessions: CashierSession[] = [];
-let activeCashierSession: CashierSession | null = null;
-let sessionCounter = 1;
-
-
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+// --- API Implementation with Supabase ---
 
 export const api = {
     async login(email: string, pass: string): Promise<User | null> {
-        await delay(500);
-        const user = users.find(u => u.email === email && u.password === pass);
-        // Reset cashier on login for mock purposes
-        if (user && activeCashierSession?.operator_id !== user.id) {
-            activeCashierSession = null;
+        // FIX: Changed password shorthand to explicit property 'password: pass' to match the function parameter.
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (authError || !authData.user) {
+            console.error('Login error:', authError?.message);
+            return null;
         }
-        return user ? { ...user } : null;
+
+        const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('name, type, market_id')
+            .eq('id', authData.user.id)
+            .single();
+
+        if (profileError || !profileData) {
+            console.error('Profile fetch error:', profileError?.message);
+            await supabase.auth.signOut(); // Log out if profile is missing
+            return null;
+        }
+
+        return {
+            id: authData.user.id,
+            email: authData.user.email!,
+            name: profileData.name,
+            type: profileData.type,
+            market_id: profileData.market_id,
+        };
+    },
+
+    async logout() {
+        await supabase.auth.signOut();
     },
 
     // Products
     async getProducts(market_id: number): Promise<Product[]> {
-        await delay(300);
-        return products.filter(p => p.market_id === market_id);
+        const { data, error } = await supabase.from('products').select('*').eq('market_id', market_id).order('name');
+        if (error) throw new Error(error.message);
+        return data || [];
     },
     async addProduct(productData: Omit<Product, 'id'>): Promise<Product> {
-        await delay(400);
-        const newProduct: Product = { ...productData, id: `p${Date.now()}` };
-        products.push(newProduct);
-        return newProduct;
+        const { data, error } = await supabase.from('products').insert(productData).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async updateProduct(id: string, productData: Partial<Omit<Product, 'id' | 'market_id'>>): Promise<Product> {
-        await delay(400);
-        products = products.map(p => p.id === id ? { ...p, ...productData } : p);
-        return products.find(p => p.id === id)!;
+    async updateProduct(id: number, productData: Partial<Product>): Promise<Product> {
+        const { data, error } = await supabase.from('products').update(productData).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async deleteProduct(id: string): Promise<void> {
-        await delay(400);
-        products = products.filter(p => p.id !== id);
+    async deleteProduct(id: number): Promise<void> {
+        const { error } = await supabase.from('products').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     },
 
     // Sales
     async getSales(market_id: number): Promise<Sale[]> {
-        await delay(300);
-        return sales.filter(s => s.market_id === market_id).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        const { data, error } = await supabase.from('sales').select('*').eq('market_id', market_id).order('created_at', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
     },
     async getOpenSales(market_id: number): Promise<Sale[]> {
-        await delay(300);
-        return sales.filter(s => s.market_id === market_id && s.status !== 'completed').sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+         const { data, error } = await supabase.from('sales').select('*').eq('market_id', market_id).neq('status', 'completed').order('created_at');
+        if (error) throw new Error(error.message);
+        return data || [];
     },
-    async createOpenSale(saleData: Pick<Sale, 'market_id' | 'operator_name' | 'customer_name'>): Promise<Sale> {
-        await delay(500);
-        const newSale: Sale = {
-            ...saleData,
-            id: `s${Date.now()}`,
-            created_at: new Date().toISOString(),
-            order_number: ++saleCounter,
-            status: 'open',
-            items: [],
-            total: 0,
-            payment_method: 'money',
-            received: 0,
-            change: 0,
-        };
-        sales.unshift(newSale);
-        return newSale;
+    async createOpenSale(saleData: Pick<Sale, 'market_id' | 'operator_id' | 'operator_name' | 'customer_name'>): Promise<Sale> {
+        const { data, error } = await supabase.from('sales').insert({ ...saleData, status: 'open', total: 0 }).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
     async addSale(saleData: Omit<Sale, 'id' | 'created_at' | 'order_number'>): Promise<Sale> {
-        await delay(500);
-        const newSale: Sale = {
-            ...saleData,
-            id: `s${Date.now()}`,
-            created_at: new Date().toISOString(),
-            order_number: ++saleCounter,
-        };
-        
-        // Handle credit account sales
-        if (newSale.payment_method === 'credit_account') {
-            const customer = customers.find(c => c.id === newSale.customer_id);
-            if (!customer) throw new Error("Cliente não encontrado para venda a prazo.");
-            if (customer.credit_balance + newSale.total > customer.credit_limit) {
-                throw new Error("Limite de crédito excedido.");
-            }
-            customer.credit_balance += newSale.total;
-            customerTransactions.unshift({
-                id: `ct-sale-${newSale.id}`,
-                customer_id: customer.id,
-                type: 'purchase',
-                amount: newSale.total,
-                timestamp: newSale.created_at,
-                related_sale_id: newSale.id
-            });
-        }
-        
-        sales.unshift(newSale); // Add to the beginning
-        // Update stock
-        newSale.items.forEach(item => {
-            const product = products.find(p => p.id === item.id);
-            if(product) {
-                product.stock -= item.qty;
-            }
+        // Supabase function will handle stock update and credit balance
+        const { data, error } = await supabase.rpc('create_sale', {
+            p_market_id: saleData.market_id,
+            p_operator_id: saleData.operator_id,
+            p_operator_name: saleData.operator_name,
+            p_customer_id: saleData.customer_id,
+            p_customer_name: saleData.customer_name,
+            p_items: saleData.items,
+            p_total: saleData.total,
+            p_payment_method: saleData.payment_method,
+            p_received: saleData.received,
+            p_change: saleData.change,
+            p_status: saleData.status,
+            p_discount: saleData.discount
         });
-        return newSale;
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async updateSale(id: string, saleData: Partial<Omit<Sale, 'id' | 'market_id'>>): Promise<Sale> {
-        await delay(200);
-        let saleToUpdate: Sale | undefined;
-        const originalSale = sales.find(s => s.id === id);
-
-        sales = sales.map(s => {
-            if (s.id === id) {
-                saleToUpdate = { ...s, ...saleData };
-                return saleToUpdate;
-            }
-            return s;
-        });
-
-        if (!saleToUpdate) throw new Error("Sale not found");
+    async updateSale(id: number, saleData: Partial<Sale>): Promise<Sale> {
+        const { data, error } = await supabase.from('sales').update(saleData).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
         
-        // Handle stock update on completion
-        if (saleData.status === 'completed' && originalSale?.status !== 'completed') {
-             saleToUpdate.items.forEach(item => {
-                const product = products.find(p => p.id === item.id);
-                if (product) {
-                    product.stock -= item.qty;
-                }
-            });
+        // If completing, we need to update stock (ideally in a transaction/function)
+        if (saleData.status === 'completed') {
+             const { error: stockError } = await supabase.rpc('update_stock_from_sale', { sale_id_arg: id });
+             if (stockError) console.error("Stock update failed:", stockError);
         }
-        
-        return saleToUpdate;
+        return data;
     },
-     async deleteSale(id: string): Promise<void> {
-        await delay(400);
-        sales = sales.filter(s => s.id !== id);
+     async deleteSale(id: number): Promise<void> {
+        const { error } = await supabase.from('sales').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     },
 
     // Customers
     async getCustomers(market_id: number): Promise<Customer[]> {
-        await delay(300);
-        return customers.filter(c => c.market_id === market_id);
+        const { data, error } = await supabase.from('customers').select('*').eq('market_id', market_id).order('name');
+        if (error) throw new Error(error.message);
+        return data || [];
     },
     async addCustomer(customerData: Omit<Customer, 'id' | 'points' | 'credit_balance'>): Promise<Customer> {
-        await delay(400);
-        const newCustomer: Customer = { ...customerData, id: Date.now(), points: 0, credit_balance: 0 };
-        customers.push(newCustomer);
-        return newCustomer;
+        const { data, error } = await supabase.from('customers').insert({ ...customerData, points: 0, credit_balance: 0 }).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async updateCustomer(id: number, customerData: Partial<Omit<Customer, 'id' | 'market_id'>>): Promise<Customer> {
-        await delay(400);
-        let updatedCustomer: Customer | undefined;
-        customers = customers.map(c => {
-             if (c.id === id) {
-                const currentPoints = c.points || 0;
-                const pointsChange = customerData.points || 0;
-                const newPoints = pointsChange < 0 ? currentPoints + pointsChange : currentPoints + pointsChange;
-                
-                updatedCustomer = { ...c, ...customerData, points: newPoints };
-                return updatedCustomer;
-             }
-             return c;
-        });
-        
-        if (!updatedCustomer) throw new Error('Customer not found');
-        return updatedCustomer;
+    async updateCustomer(id: number, customerData: Partial<Customer>): Promise<Customer> {
+       const { data, error } = await supabase.rpc('update_customer_points', {
+            p_customer_id: id,
+            p_points_change: customerData.points || 0,
+            p_customer_data: {
+                name: customerData.name,
+                email: customerData.email,
+                phone: customerData.phone,
+                cpf: customerData.cpf,
+                credit_limit: customerData.credit_limit
+            }
+       });
+
+        if (error) throw new Error(error.message);
+        return data;
     },
     async deleteCustomer(id: number): Promise<void> {
-        await delay(400);
-        customers = customers.filter(c => c.id !== id);
+        const { error } = await supabase.from('customers').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     },
     async addCustomerPayment(customerId: number, amount: number): Promise<Customer> {
-        await delay(500);
-        const customer = customers.find(c => c.id === customerId);
-        if (!customer) throw new Error("Cliente não encontrado.");
-        if (amount <= 0) throw new Error("Valor do pagamento deve ser positivo.");
-
-        customer.credit_balance -= amount;
-        if (customer.credit_balance < 0) customer.credit_balance = 0;
-
-        customerTransactions.unshift({
-            id: `ct-payment-${Date.now()}`,
-            customer_id: customerId,
-            type: 'payment',
-            amount: amount,
-            timestamp: new Date().toISOString(),
-            notes: "Pagamento recebido"
-        });
-        return { ...customer };
+        const { data, error } = await supabase.rpc('add_customer_payment', { p_customer_id: customerId, p_amount: amount });
+        if (error) throw new Error(error.message);
+        return data;
     },
     async getCustomerTransactions(customerId: number): Promise<CustomerTransaction[]> {
-        await delay(300);
-        return customerTransactions.filter(t => t.customer_id === customerId).sort((a,b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+         const { data, error } = await supabase.from('customer_transactions').select('*').eq('customer_id', customerId).order('timestamp', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
     },
 
-
-    // Operators
+    // Operators (This is a simplified version, real user management should be in Supabase UI)
     async getOperators(market_id: number): Promise<User[]> {
-        await delay(300);
-        return users.filter(u => u.market_id === market_id);
+         const { data, error } = await supabase.from('profiles').select('*').eq('market_id', market_id);
+         if (error) throw new Error(error.message);
+         // This is incomplete as it doesn't fetch email from auth.users, but good enough for display
+         return (data?.map(p => ({...p, email: 'not-loaded@pdv.com'} as User))) || [];
     },
-    async addOperator(operatorData: Omit<User, 'id' | 'type'>): Promise<User> {
-        await delay(400);
-        const newOperator: User = { ...operatorData, id: Date.now(), type: 'operator' };
-        users.push(newOperator);
-        return newOperator;
+    // FIX: Add missing operator management functions to resolve compile errors.
+    async addOperator(operatorData: { name: string; email: string; password?: string; market_id: number }): Promise<User> {
+        // NOTE: True user creation isn't possible from the client-side without logging out the current user.
+        // This is a placeholder and will throw an error. Manage users in Supabase UI.
+        throw new Error("Operator creation from the app is not supported. Please use the Supabase dashboard.");
     },
-    async updateOperator(id: number, operatorData: Partial<Omit<User, 'id' | 'market_id' | 'type'>>): Promise<User> {
-        await delay(400);
-        users = users.map(u => u.id === id ? { ...u, ...operatorData } : u);
-        return users.find(u => u.id === id)!;
+    async updateOperator(id: string, operatorData: Partial<User> & { password?: string }): Promise<User> {
+        if (operatorData.password) {
+            // Password update should be done via supabase.auth.updateUser(), not on the profiles table.
+            console.warn("Password updates are not handled in this simplified implementation.");
+        }
+        const { data, error } = await supabase.from('profiles').update({ name: operatorData.name }).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        // Re-create a User object. Email is not updated here.
+        const updatedUser = { ...data, email: operatorData.email || 'not-loaded@pdv.com' } as User;
+        return updatedUser;
     },
-    async deleteOperator(id: number): Promise<void> {
-        await delay(400);
-        users = users.filter(u => u.id !== id);
+    async deleteOperator(id: string): Promise<void> {
+        // NOTE: This only deletes the profile, not the auth.user. This will orphan the user.
+        // Proper deletion needs admin privileges on the backend.
+        const { error } = await supabase.from('profiles').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     },
     
-    // --- Expenses API ---
+    // Expenses
     async getExpenses(market_id: number): Promise<Expense[]> {
-        await delay(300);
-        return expenses
-            .filter(e => e.market_id === market_id)
-            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const { data, error } = await supabase.from('expenses').select('*').eq('market_id', market_id).order('date', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
     },
     async addExpense(expenseData: Omit<Expense, 'id'>): Promise<Expense> {
-        await delay(400);
-        const newExpense: Expense = { ...expenseData, id: `e${Date.now()}` };
-        expenses.push(newExpense);
-        return newExpense;
+        const { data, error } = await supabase.from('expenses').insert(expenseData).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async updateExpense(id: string, expenseData: Partial<Omit<Expense, 'id' | 'market_id'>>): Promise<Expense> {
-        await delay(400);
-        expenses = expenses.map(e => e.id === id ? { ...e, ...expenseData } : e);
-        return expenses.find(e => e.id === id)!;
+    async updateExpense(id: number, expenseData: Partial<Expense>): Promise<Expense> {
+        const { data, error } = await supabase.from('expenses').update(expenseData).eq('id', id).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-    async deleteExpense(id: string): Promise<void> {
-        await delay(400);
-        expenses = expenses.filter(e => e.id !== id);
+    async deleteExpense(id: number): Promise<void> {
+        const { error } = await supabase.from('expenses').delete().eq('id', id);
+        if (error) throw new Error(error.message);
     },
 
     // --- Cashier API ---
-    async getActiveCashierSession(operator_id: number): Promise<CashierSession | null> {
-        await delay(200);
-        if (activeCashierSession && activeCashierSession.operator_id === operator_id) {
-            return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
-        }
-        return null;
+    async getActiveCashierSession(operator_id: string): Promise<CashierSession | null> {
+         const { data, error } = await supabase.from('cashier_sessions').select('*').eq('operator_id', operator_id).eq('status', 'open').maybeSingle();
+        if (error) throw new Error(error.message);
+        return data;
     },
-
-    async startCashierSession(data: { operator_id: number, operator_name: string, market_id: number, opening_balance: number }): Promise<CashierSession> {
-        await delay(500);
-        if (activeCashierSession) {
-            throw new Error("Já existe uma sessão de caixa aberta.");
-        }
-        const newSession: CashierSession = {
-            id: `cs${sessionCounter++}`,
-            market_id: data.market_id,
-            operator_id: data.operator_id,
-            operator_name: data.operator_name,
-            start_time: new Date().toISOString(),
-            opening_balance: data.opening_balance,
-            status: 'open',
-            transactions: [],
-            calculated_sales_total: 0,
-        };
-        activeCashierSession = newSession;
-        return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
+    async startCashierSession(sessionData: Omit<CashierSession, 'id' | 'status'>): Promise<CashierSession> {
+        const { data, error } = await supabase.from('cashier_sessions').insert({ ...sessionData, status: 'open' }).select().single();
+        if (error) throw new Error(error.message);
+        return data;
     },
-
-    async addCashierTransaction(sessionId: string, transaction: Omit<CashierTransaction, 'id' | 'timestamp'>): Promise<CashierSession> {
-        await delay(100);
-        if (!activeCashierSession || activeCashierSession.id !== sessionId) {
-            throw new Error("Sessão de caixa não encontrada ou inativa.");
-        }
-        const newTransaction: CashierTransaction = {
-            ...transaction,
-            id: `ct${Date.now()}`,
-            timestamp: new Date().toISOString(),
-        };
-        activeCashierSession.transactions.push(newTransaction);
-        return { ...activeCashierSession, transactions: [...activeCashierSession.transactions] };
+    async addCashierTransaction(sessionId: number, transaction: Omit<CashierTransaction, 'id' | 'timestamp' | 'session_id'>): Promise<CashierSession> {
+        await supabase.from('cashier_transactions').insert({ ...transaction, session_id: sessionId });
+        // Refetch the session to get updated summary data
+        const { data, error } = await supabase.from('cashier_sessions').select('*').eq('id', sessionId).single();
+        if(error) throw new Error(error.message);
+        return data;
     },
-
-    async closeCashierSession(sessionId: string, closing_balance: number): Promise<CashierSession> {
-        await delay(500);
-        if (!activeCashierSession || activeCashierSession.id !== sessionId) {
-            throw new Error("Sessão de caixa não encontrada ou inativa.");
-        }
-        
-        const suprimentos = activeCashierSession.transactions
-            .filter(t => t.type === 'suprimento')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const sangrias = activeCashierSession.transactions
-            .filter(t => t.type === 'sangria')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const salesInCash = activeCashierSession.transactions
-            .filter(t => t.type === 'sale' && t.payment_method === 'money')
-            .reduce((sum, t) => sum + t.amount, 0);
-            
-        const allSalesTotal = activeCashierSession.transactions
-            .filter(t => t.type === 'sale')
-            .reduce((sum, t) => sum + t.amount, 0);
-
-        const calculated_closing_balance = activeCashierSession.opening_balance + salesInCash + suprimentos - sangrias;
-        const difference = closing_balance - calculated_closing_balance;
-
-        const closedSession: CashierSession = {
-            ...activeCashierSession,
-            status: 'closed',
-            end_time: new Date().toISOString(),
-            closing_balance,
-            calculated_closing_balance,
-            calculated_sales_total: allSalesTotal,
-            difference,
-        };
-        
-        cashierSessions.push(closedSession);
-        activeCashierSession = null;
-
-        return closedSession;
+    async closeCashierSession(sessionId: number, closing_balance: number): Promise<CashierSession> {
+        const { data, error } = await supabase.rpc('close_cashier', { p_session_id: sessionId, p_closing_balance: closing_balance });
+        if (error) throw new Error(error.message);
+        return data;
     },
-    
     async getCashierHistory(market_id: number): Promise<CashierSession[]> {
-        await delay(400);
-        return cashierSessions
-            .filter(cs => cs.market_id === market_id)
-            .sort((a,b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+        const { data, error } = await supabase.from('cashier_sessions').select('*').eq('market_id', market_id).eq('status', 'closed').order('start_time', { ascending: false });
+        if (error) throw new Error(error.message);
+        return data || [];
     },
 };
-
 
 // --- Gemini Service ---
 class GeminiService {
     ai: GoogleGenAI | null = null;
+    apiKey: string | undefined = env.VITE_GEMINI_API_KEY;
 
     constructor() {
         try {
-            if (process.env.API_KEY) {
-                this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            if (this.apiKey) {
+                this.ai = new GoogleGenAI({ apiKey: this.apiKey });
             } else {
-                 console.warn("Gemini API key not found in process.env.API_KEY. Using mock service.");
+                 console.warn("Gemini API key not found in VITE_GEMINI_API_KEY. Using mock service.");
             }
         } catch (e) {
             console.error("Could not initialize GoogleGenAI. AI features will be disabled.", e);
         }
     }
     
-    // Mock financial insights for when API key is not available
     getMockFinancialInsights(data: any): string {
         return `
 ### **Análise Financeira (Demonstração)**
@@ -423,21 +260,13 @@ class GeminiService {
 **Resumo Geral:**
 Seu faturamento de **R$ ${data.totalRevenue.toFixed(2)}** é sólido. Após deduzir os custos dos produtos (R$ ${data.totalCosts.toFixed(2)}) e outras despesas (R$ ${data.totalExpenses.toFixed(2)}), seu lucro líquido é de **R$ ${data.totalProfit.toFixed(2)}**. Isso indica uma boa saúde financeira para o período.
 
-**Principais Produtos:**
-Seus produtos mais vendidos, como **${data.topProducts[0]?.name}**, estão gerando a maior parte da receita. Continue garantindo o estoque desses itens.
-
-**Horários de Pico:**
-Parece haver um aumento nas vendas por volta das **${data.salesByHour.reduce((prev: any, current: any) => (prev.sales > current.sales) ? prev : current, {hour: 'N/A'}).hour}**, considere reforçar a equipe nesse período.
-
 **Recomendações:**
 1.  **Controle de Despesas:** Fique de olho nas despesas variáveis para maximizar seu lucro.
 2.  **Crie Combos:** Ofereça pacotes com seus produtos mais vendidos para aumentar o ticket médio.
-3.  **Promoções Direcionadas:** Crie promoções nos horários de menor movimento para atrair mais clientes.
 
-*Nota: Esta é uma análise de demonstração. Configure sua chave de API do Gemini para obter insights em tempo real.*
+*Nota: Esta é uma análise de demonstração. Configure a chave VITE_GEMINI_API_KEY para obter insights em tempo real.*
         `;
     }
-
 
     async getFinancialInsights(data: any): Promise<string> {
         if (!this.ai) return this.getMockFinancialInsights(data);

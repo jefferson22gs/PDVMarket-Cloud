@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useCallback } from 'react';
 import type { User, Sale } from '../types';
 import { api } from '../services/api';
@@ -51,8 +52,10 @@ const ComandasModal: React.FC<ComandasModalProps> = ({ isOpen, onClose, user, on
         }
 
         try {
+            // FIX: Added missing operator_id property.
             const newComanda = await api.createOpenSale({
                 market_id: user.market_id,
+                operator_id: user.id,
                 operator_name: user.name,
                 customer_name: newComandaName.trim(),
             });

@@ -110,7 +110,8 @@ const ExpensesView: React.FC<ExpensesViewProps> = ({ user }) => {
         }
     };
 
-    const handleDeleteExpense = async (expenseId: string) => {
+    // FIX: Changed expenseId type from string to number.
+    const handleDeleteExpense = async (expenseId: number) => {
         if (window.confirm('Tem certeza que deseja excluir esta despesa?')) {
             try {
                 await api.deleteExpense(expenseId);

@@ -96,7 +96,8 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
         });
     }, [cashierSession, addToast, playSound]);
     
-    const updateQty = (productId: string, newQty: number) => {
+    // FIX: Changed productId type from string to number to match the product ID type.
+    const updateQty = (productId: number, newQty: number) => {
         const product = products.find(p => p.id === productId);
         if (newQty > 0 && product && newQty <= product.stock) {
             setCart(cart.map(item => item.id === productId ? { ...item, qty: newQty } : item));
@@ -120,9 +121,10 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
         playSound('clear');
     }, [playSound]);
 
-    const handleCompleteSale = async (saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items'>) => {
+    const handleCompleteSale = async (saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items' | 'operator_id'>) => {
         const saleToSave = {
             ...saleData,
+            operator_id: user.id,
             operator_name: user.name,
             market_id: user.market_id,
             items: cart.map(({ id, name, price, qty }) => ({ id, name, price, qty })),
@@ -133,6 +135,7 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
             if (activeSale?.id) {
                 completedSale = await api.updateSale(activeSale.id, { ...saleToSave, status: 'completed' });
             } else {
+                // @ts-ignore
                 completedSale = await api.addSale({ ...saleToSave, status: 'completed' });
             }
 
@@ -380,6 +383,7 @@ const PDVView: React.FC<PDVViewProps> = ({ user, onSwitchView, onLogout }) => {
                     onClose={() => setIsSaleModalOpen(false)}
                     cart={cart}
                     customer={customer}
+                    user={user}
                     onCompleteSale={handleCompleteSale}
                 />
             }

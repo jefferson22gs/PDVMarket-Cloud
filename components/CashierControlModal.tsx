@@ -29,11 +29,14 @@ const OpenCashierView: React.FC<{ user: User; onSessionStarted: (session: Cashie
         }
         setIsLoading(true);
         try {
+            // FIX: Added missing properties start_time and calculated_sales_total.
             const newSession = await api.startCashierSession({
                 operator_id: user.id,
                 operator_name: user.name,
                 market_id: user.market_id,
-                opening_balance: balance
+                opening_balance: balance,
+                start_time: new Date().toISOString(),
+                calculated_sales_total: 0,
             });
             addToast({ message: 'Caixa aberto com sucesso!', type: 'success' });
             onSessionStarted(newSession);
@@ -81,7 +84,7 @@ const ActiveSessionView: React.FC<Omit<CashierControlModalProps, 'isOpen'>> = ({
 
     const summary = useMemo(() => {
         if (!session) return null;
-        const salesByPayment = session.transactions
+        const salesByPayment = (session.transactions || [])
             .filter(t => t.type === 'sale')
             .reduce((acc, t) => {
                 const method = t.payment_method || 'money';
@@ -89,8 +92,8 @@ const ActiveSessionView: React.FC<Omit<CashierControlModalProps, 'isOpen'>> = ({
                 return acc;
             }, {} as Record<PaymentMethod, number>);
 
-        const suprimentos = session.transactions.filter(t => t.type === 'suprimento').reduce((sum, t) => sum + t.amount, 0);
-        const sangrias = session.transactions.filter(t => t.type === 'sangria').reduce((sum, t) => sum + t.amount, 0);
+        const suprimentos = (session.transactions || []).filter(t => t.type === 'suprimento').reduce((sum, t) => sum + t.amount, 0);
+        const sangrias = (session.transactions || []).filter(t => t.type === 'sangria').reduce((sum, t) => sum + t.amount, 0);
         const totalSales = Object.values(salesByPayment).reduce((sum, a) => sum + a, 0);
         const expectedCash = session.opening_balance + (salesByPayment.money || 0) + suprimentos - sangrias;
 

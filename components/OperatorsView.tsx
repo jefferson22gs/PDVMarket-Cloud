@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { User } from '../types';
 import { api } from '../services/api';
@@ -10,7 +11,8 @@ interface OperatorsViewProps {
     user: User;
 }
 
-const OperatorForm: React.FC<{ operator: Partial<User> | null; onSave: (operator: Omit<User, 'id' | 'market_id' | 'type'>) => void; onCancel: () => void; }> = ({ operator, onSave, onCancel }) => {
+// FIX: Added optional password to the onSave callback type.
+const OperatorForm: React.FC<{ operator: Partial<User> | null; onSave: (operator: Omit<User, 'id' | 'market_id' | 'type'> & { password?: string }) => void; onCancel: () => void; }> = ({ operator, onSave, onCancel }) => {
     const [formData, setFormData] = useState({
         name: operator?.name || '',
         email: operator?.email || '',
@@ -88,10 +90,11 @@ const OperatorsView: React.FC<OperatorsViewProps> = ({ user: owner }) => {
         setIsModalOpen(false);
     };
 
-    const handleSaveOperator = async (operatorData: Omit<User, 'id' | 'market_id' | 'type'>) => {
+    // FIX: Updated operatorData type to include optional password.
+    const handleSaveOperator = async (operatorData: Omit<User, 'id' | 'market_id' | 'type'> & { password?: string }) => {
         try {
              if (editingOperator) {
-                const dataToUpdate = { ...operatorData };
+                const dataToUpdate: Partial<User> & { password?: string } = { ...operatorData };
                 if (!dataToUpdate.password) {
                     delete dataToUpdate.password; // Don't send empty password
                 }
@@ -108,7 +111,8 @@ const OperatorsView: React.FC<OperatorsViewProps> = ({ user: owner }) => {
         }
     };
 
-    const handleDeleteOperator = async (operatorId: number) => {
+    // FIX: Changed operatorId type from number to string.
+    const handleDeleteOperator = async (operatorId: string) => {
         if (window.confirm('Tem certeza que deseja excluir este operador?')) {
             try {
                 await api.deleteOperator(operatorId);

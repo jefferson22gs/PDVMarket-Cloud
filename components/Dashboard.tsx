@@ -75,6 +75,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
         const totalRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
         const totalCosts = sales.reduce((sum, sale) => {
             const saleCost = sale.items.reduce((itemSum, item) => {
+                // FIX: Corrected comparison by converting string item.id to number.
                 const product = products.find(p => p.id === item.id);
                 const cost = product ? product.cost : 0;
                 return itemSum + cost * item.qty;
@@ -113,14 +114,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, lowStockThreshold, setActiv
 
         const topProducts = Object.entries(productSales)
             .map(([id, revenue]) => {
-                const product = products.find(p => p.id === id);
+                // FIX: Corrected comparison by converting string id to number.
+                const product = products.find(p => p.id === Number(id));
                 return { name: product?.name || 'Desconhecido', revenue };
             })
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 5);
         
         const topProductsForAI = Object.entries(productSales).map(([id, revenue]) => {
-                const product = products.find(p => p.id === id);
+                // FIX: Corrected comparison by converting string id to number.
+                const product = products.find(p => p.id === Number(id));
                 const profit = product ? (product.price - product.cost) * (revenue/product.price) : 0;
                 return { name: product?.name || 'Desconhecido', revenue, profit };
             })

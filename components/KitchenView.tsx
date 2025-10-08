@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { User, View, Sale, SaleStatus } from '../types';
 import { api } from '../services/api';
@@ -39,7 +40,8 @@ const OrderTimer: React.FC<{ startTime: string }> = ({ startTime }) => {
 };
 
 
-const OrderCard: React.FC<{ order: Sale; onUpdateStatus: (id: string, status: SaleStatus) => void; }> = ({ order, onUpdateStatus }) => {
+// FIX: Changed onUpdateStatus id parameter from string to number.
+const OrderCard: React.FC<{ order: Sale; onUpdateStatus: (id: number, status: SaleStatus) => void; }> = ({ order, onUpdateStatus }) => {
     const nextStatusMap: Partial<Record<SaleStatus, SaleStatus>> = {
         pending: 'preparing',
         preparing: 'ready',
@@ -93,8 +95,8 @@ const KitchenView: React.FC<KitchenViewProps> = ({ user, onSwitchView, onLogout 
     const [sales, setSales] = useState<Sale[]>([]);
     const { addToast } = useToast();
     const audioContextRef = useRef<AudioContext | null>(null);
-    // Fix: Explicitly type the useRef to Set<string> to avoid type errors.
-    const knownPendingIds = useRef(new Set<string>());
+    // FIX: Changed useRef to use Set<number> to match sale ID type.
+    const knownPendingIds = useRef(new Set<number>());
 
     const playNotificationSound = useCallback(() => {
         if (!audioContextRef.current) {
@@ -139,7 +141,8 @@ const KitchenView: React.FC<KitchenViewProps> = ({ user, onSwitchView, onLogout 
     
     useInterval(fetchSales, 5000); // Poll for new sales every 5 seconds
 
-    const handleUpdateStatus = async (saleId: string, status: SaleStatus) => {
+    // FIX: Changed saleId type from string to number.
+    const handleUpdateStatus = async (saleId: number, status: SaleStatus) => {
         try {
             await api.updateSale(saleId, { status });
             addToast({ message: `Pedido #${sales.find(s=>s.id === saleId)?.order_number} atualizado!`, type: 'success' });

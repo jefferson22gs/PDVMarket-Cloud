@@ -121,7 +121,8 @@ const CustomerCreditModal: React.FC<CustomerCreditModalProps> = ({ isOpen, onClo
                                             }`}>
                                                 {t.type === 'purchase' ? 'Compra' : 'Pagamento'}
                                             </span>
-                                            {t.related_sale_id && <span className="text-xs text-gray-400 ml-2">#{t.related_sale_id.substring(0, 6)}</span>}
+                                            {/* FIX: Convert related_sale_id to string before using substring. */}
+                                            {t.related_sale_id && <span className="text-xs text-gray-400 ml-2">#{String(t.related_sale_id).substring(0, 6)}</span>}
                                         </td>
                                         <td className={`px-4 py-2 text-right font-semibold ${t.type === 'purchase' ? 'text-red-500' : 'text-green-500'}`}>
                                             {t.type === 'purchase' ? '+' : '-'} R$ {t.amount.toFixed(2)}

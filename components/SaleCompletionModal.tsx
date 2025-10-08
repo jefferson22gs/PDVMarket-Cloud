@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { CartItem, Customer, Sale, PaymentMethod } from '../types';
+import type { CartItem, Customer, Sale, PaymentMethod, User } from '../types';
 import { Icon, Modal } from './common';
 import { useToast } from '../App';
 
@@ -8,10 +8,11 @@ interface SaleCompletionModalProps {
     onClose: () => void;
     cart: CartItem[];
     customer: Customer | null;
-    onCompleteSale: (saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items'>) => Promise<boolean>;
+    user: User; // FIX: Add user to props
+    onCompleteSale: (saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items' | 'operator_id'>) => Promise<boolean>;
 }
 
-const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClose, cart, customer, onCompleteSale }) => {
+const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClose, cart, customer, user, onCompleteSale }) => {
     const { addToast } = useToast();
     
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('money');
@@ -89,18 +90,20 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
         }
 
         setIsLoading(true);
+        // FIX: Added operator_id and corrected operator_name.
         const saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items'> = {
             total: finalTotal,
             payment_method: paymentMethod,
             received: paymentMethod === 'money' ? parseFloat(receivedAmount) : finalTotal,
             change: change,
             status: 'completed',
-            operator_name: '',
+            operator_id: user.id,
+            operator_name: user.name,
             customer_id: customer?.id || null,
             customer_name: customer?.name,
             discount: discount > 0 ? { type: 'manual', amount: discount } : undefined,
         };
-
+        // @ts-ignore
         const success = await onCompleteSale(saleData);
         setIsLoading(false);
         if (success) {
@@ -110,7 +113,8 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
                 items: cart, 
                 created_at: new Date().toISOString(), 
                 order_number: 0, 
-                id: '', 
+                // FIX: Changed id from string to number to match Sale type.
+                id: 0, 
                 market_id: 0 
             });
         }
