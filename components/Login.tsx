@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { api } from '../services/api';
 import type { User } from '../types';
 import { useToast } from '../App';
+import RegistrationModal from './RegistrationModal';
 
 interface LoginViewProps {
     onLogin: (user: User) => void;
@@ -12,6 +13,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     const [email, setEmail] = useState('dono@pdv.com');
     const [password, setPassword] = useState('123');
     const [isLoading, setIsLoading] = useState(false);
+    const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
     const { addToast } = useToast();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -83,8 +85,22 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                             Use dono@pdv.com / 123 para Dono ou joao@pdv.com / 123 para Operador.
                         </p>
                     </form>
+                    <p className="text-center text-white/80 mt-6">
+                        Não tem uma conta?{' '}
+                        <button onClick={() => setIsRegisterModalOpen(true)} className="font-bold hover:underline">
+                            Cadastre-se
+                        </button>
+                    </p>
                 </div>
             </div>
+            <RegistrationModal
+                isOpen={isRegisterModalOpen}
+                onClose={() => setIsRegisterModalOpen(false)}
+                onRegisterSuccess={(user) => {
+                    setIsRegisterModalOpen(false);
+                    onLogin(user);
+                }}
+            />
         </div>
     );
 };

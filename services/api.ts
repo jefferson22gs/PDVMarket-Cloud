@@ -1,6 +1,6 @@
 import { GoogleGenAI, Chat } from "@google/genai";
 // FIX: Import ChatSession type.
-import type { User, Product, Sale, Customer, CustomerTransaction, Expense, CashierSession, CashierTransaction, ChatSession } from '../types';
+import type { User, Product, Sale, Customer, CustomerTransaction, Expense, CashierSession, CashierTransaction, ChatSession, Market } from '../types';
 import { supabase } from './supabaseClient';
 import { env } from '../env';
 
@@ -34,6 +34,88 @@ export const api = {
             type: profileData.type,
             market_id: profileData.market_id,
         };
+    },
+
+    async register(userData: any, marketData: any, logoFile: File | null): Promise<User | null> {
+        // 1. Sign up user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+            email: userData.email,
+            password: userData.password,
+            options: {
+                data: {
+                    name: userData.name,
+                    type: 'owner'
+                }
+            }
+        });
+
+        if (authError || !authData.user) {
+            throw new Error(authError?.message || 'Could not sign up user.');
+        }
+        const user = authData.user;
+
+        // 2. Upload logo if it exists
+        let logoUrl = null;
+        if (logoFile) {
+            const fileExt = logoFile.name.split('.').pop();
+            const fileName = `${user.id}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage
+                .from('logos')
+                .upload(fileName, logoFile, { upsert: true });
+
+            if (uploadError) {
+                // NOTE: This could orphan a user. In a real production app, you might want a cleanup function.
+                throw new Error('Failed to upload logo: ' + uploadError.message);
+            }
+
+            const { data: urlData } = supabase.storage.from('logos').getPublicUrl(fileName);
+            logoUrl = urlData.publicUrl;
+        }
+        
+        // 3. Create market
+        const { data: market, error: marketError } = await supabase
+            .from('markets')
+            .insert({ ...marketData, logo_url: logoUrl })
+            .select()
+            .single();
+        
+        if (marketError || !market) {
+            throw new Error(marketError?.message || 'Could not create market.');
+        }
+
+        // 4. Create profile for the user
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+                id: user.id,
+                name: userData.name,
+                type: 'owner',
+                market_id: market.id,
+            })
+            .select()
+            .single();
+
+        if (profileError || !profile) {
+            throw new Error(profileError?.message || 'Could not create user profile.');
+        }
+
+        // signUp logs the user in, so we can return the profile data.
+        return {
+            id: user.id,
+            email: user.email!,
+            name: profile.name,
+            type: profile.type,
+            market_id: profile.market_id,
+        };
+    },
+
+    async getMarket(market_id: number): Promise<Market | null> {
+        const { data, error } = await supabase.from('markets').select('*').eq('id', market_id).single();
+        if (error) {
+            console.error('Error fetching market data:', error);
+            return null;
+        }
+        return data;
     },
 
     async logout() {

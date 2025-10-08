@@ -11,6 +11,12 @@ This script creates all the necessary tables for the application.
 CREATE TABLE markets (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
+    cnpj TEXT,
+    ie TEXT,
+    address TEXT,
+    city TEXT,
+    phone TEXT,
+    logo_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -179,7 +185,6 @@ CREATE POLICY "Market data isolation for cashier transactions" ON cashier_transa
 FOR ALL USING (
   (SELECT market_id FROM cashier_sessions WHERE id = session_id) = get_my_market_id()
 );
-
 ```
 
 ## 3. Database Functions (RPC)
@@ -187,27 +192,6 @@ FOR ALL USING (
 These functions handle complex logic on the database side, which is more efficient and secure.
 
 ```sql
--- Function to create a user profile when a new user signs up
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-BEGIN
-  -- This is a placeholder. In a real app, you would have a way to assign market_id.
-  -- For now, we'll assign them to the first market.
-  INSERT INTO public.profiles (id, name, type, market_id)
-  VALUES (new.id, new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'type', 1);
-  RETURN new;
-END;
-$$;
-
--- Trigger to call the function on new user creation
-CREATE TRIGGER on_auth_user_created
-AFTER INSERT ON auth.users
-FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
-
-
 -- Function to safely update customer points
 CREATE OR REPLACE FUNCTION update_customer_points(p_customer_id INT, p_points_change INT, p_customer_data JSONB)
 RETURNS SETOF customers
@@ -388,10 +372,30 @@ BEGIN
     RETURN QUERY SELECT * FROM sales WHERE id = new_sale_id;
 END;
 $$;
-
 ```
-## 4. Final Touches
+
+## 4. Storage Setup
+
+Run this to create the public bucket for storing market logos.
+
+```sql
+-- Create a public bucket for market logos with a 1MB size limit and allowed image types.
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('logos', 'logos', true, 1048576, ARRAY['image/png', 'image/jpeg', 'image/webp'])
+ON CONFLICT(id) DO UPDATE SET public = true, file_size_limit = 1048576, allowed_mime_types = ARRAY['image/png', 'image/jpeg', 'image/webp'];
+
+-- RLS for logos bucket
+-- This policy allows anyone to view the logos, which is what we want for receipts/display
+CREATE POLICY "Public read access for logos" ON storage.objects
+FOR SELECT USING (bucket_id = 'logos');
+
+-- This policy allows any logged-in user to upload a logo.
+CREATE POLICY "Authenticated users can upload logos" ON storage.objects
+FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+```
+
+## 5. Final Touches
 1.  Go to **Authentication -> Providers** and enable the **Email** provider.
 2.  (Optional) Go to **Authentication -> Settings** and disable "Enable email confirmations" for easier testing.
-3.  Go to the **Users** tab and add your 'owner' and 'operator' users manually. When you add them, you can add `{"name": "Dono da Loja", "type": "owner"}` to the **User Metadata** field. This will trigger the `handle_new_user` function to create their profile.
-4.  Make sure you have added some products, etc. in the Supabase table editor to test with.
+3.  New users will now be created through the registration form in the app itself.
+4.  You can use the Supabase table editor to pre-populate data for testing.

@@ -1,14 +1,15 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { CartItem, Customer, Sale, PaymentMethod, User } from '../types';
+import type { CartItem, Customer, Sale, PaymentMethod, User, Market } from '../types';
 import { Icon, Modal } from './common';
 import { useToast } from '../App';
+import { api } from '../services/api';
 
 interface SaleCompletionModalProps {
     isOpen: boolean;
     onClose: () => void;
     cart: CartItem[];
     customer: Customer | null;
-    user: User; // FIX: Add user to props
+    user: User; 
     onCompleteSale: (saleData: Omit<Sale, 'id' | 'created_at' | 'order_number' | 'market_id' | 'items' | 'operator_id'>) => Promise<boolean>;
 }
 
@@ -19,6 +20,7 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
     const [receivedAmount, setReceivedAmount] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [saleCompletedData, setSaleCompletedData] = useState<Sale | null>(null);
+    const [market, setMarket] = useState<Market | null>(null);
     const [discount, setDiscount] = useState(0); 
 
     const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.qty, 0), [cart]);
@@ -43,44 +45,137 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
     const canUseCredit = customer && finalTotal > 0 && finalTotal <= customerCreditAvailable;
 
     useEffect(() => {
+        const fetchMarket = async () => {
+            if (isOpen && user) {
+                const marketData = await api.getMarket(user.market_id);
+                setMarket(marketData);
+            }
+        };
+
         if (isOpen) {
             setPaymentMethod('money');
             setReceivedAmount('');
             setDiscount(0);
             setIsLoading(false);
             setSaleCompletedData(null);
+            fetchMarket();
         }
-    }, [isOpen]);
+    }, [isOpen, user]);
 
-    const formatReceiptForWhatsApp = (sale: Sale) => {
-        let message = `*Recibo PDVMarket Cloud*\n\n`;
-        message += `Data: ${new Date(sale.created_at).toLocaleString('pt-BR')}\n`;
+    const formatReceiptText = (sale: Sale, target: 'whatsapp' | 'print') => {
+        const line = target === 'whatsapp' ? '\n' : '<br>';
+        const boldStart = target === 'whatsapp' ? '*' : '<b>';
+        const boldEnd = target === 'whatsapp' ? '*' : '</b>';
+        let text = `${boldStart}${market?.name || 'Recibo PDVMarket'}${boldEnd}${line}`;
+        if (market?.cnpj) text += `CNPJ: ${market.cnpj}${line}`;
+        if (market?.address) text += `${market.address}, ${market.city}${line}`;
+        if (market?.phone) text += `Tel: ${market.phone}${line}`;
+        text += `------------------------${line}`;
+        text += `Data: ${new Date(sale.created_at).toLocaleString('pt-BR')}${line}`;
         if (sale.customer_name) {
-            message += `Cliente: ${sale.customer_name}\n`;
+            text += `Cliente: ${sale.customer_name}${line}`;
         }
-        message += `\n*Itens:*\n`;
+        text += `------------------------${line}`;
+        text += `${boldStart}Itens:${boldEnd}${line}`;
         sale.items.forEach(item => {
-            message += `${item.qty}x ${item.name} - R$ ${(item.price * item.qty).toFixed(2)}\n`;
+            text += `${item.qty}x ${item.name} - R$ ${(item.price * item.qty).toFixed(2)}${line}`;
         });
-        message += `\n`;
+        text += line;
         if (sale.discount && sale.discount.amount > 0) {
-            message += `Subtotal: R$ ${(sale.total + sale.discount.amount).toFixed(2)}\n`;
-            message += `Desconto: -R$ ${sale.discount.amount.toFixed(2)}\n`;
+            text += `Subtotal: R$ ${(sale.total + sale.discount.amount).toFixed(2)}${line}`;
+            text += `Desconto: -R$ ${sale.discount.amount.toFixed(2)}${line}`;
         }
-        message += `*Total: R$ ${sale.total.toFixed(2)}*\n`;
-        message += `Pagamento: ${sale.payment_method.replace('_', ' ').toUpperCase()}\n`;
+        text += `${boldStart}Total: R$ ${sale.total.toFixed(2)}${boldEnd}${line}`;
+        text += `Pagamento: ${sale.payment_method.replace('_', ' ').toUpperCase()}${line}`;
         if (sale.payment_method === 'money') {
-             message += `Recebido: R$ ${sale.received.toFixed(2)}\n`;
-             message += `Troco: R$ ${sale.change.toFixed(2)}\n`;
+             text += `Recebido: R$ ${sale.received.toFixed(2)}${line}`;
+             text += `Troco: R$ ${sale.change.toFixed(2)}${line}`;
         }
-        message += `\nObrigado pela sua preferência!`;
-        return encodeURIComponent(message);
+        text += `${line}Obrigado pela sua preferência!`;
+        return text;
     };
 
     const handleSendWhatsApp = () => {
         if (!saleCompletedData) return;
-        const message = formatReceiptForWhatsApp(saleCompletedData);
+        const message = encodeURIComponent(formatReceiptText(saleCompletedData, 'whatsapp'));
         window.open(`https://wa.me/?text=${message}`, '_blank');
+    };
+    
+    const handlePrintReceipt = () => {
+        if (!saleCompletedData || !market) return;
+    
+        const printWindow = window.open('', '_blank', 'width=320,height=500');
+        if (!printWindow) {
+            addToast({ message: 'Por favor, habilite pop-ups para imprimir.', type: 'warning' });
+            return;
+        }
+
+        const receiptHTML = `
+            <html>
+            <head>
+                <title>Recibo</title>
+                <style>
+                    body { font-family: 'Courier New', Courier, monospace; width: 300px; margin: 0 auto; padding: 10px; color: #000; }
+                    .header { text-align: center; }
+                    .header img { max-width: 150px; margin-bottom: 10px; }
+                    .header h2 { margin: 0; font-size: 1.2em; }
+                    .header p { margin: 2px 0; font-size: 0.8em; }
+                    hr { border: none; border-top: 1px dashed #000; margin: 5px 0; }
+                    .info { font-size: 0.8em; }
+                    .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                    .items-table th, .items-table td { font-size: 0.8em; padding: 2px; text-align: left; }
+                    .items-table .header-row th { border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
+                    .total-section { text-align: right; margin-top: 10px; font-size: 0.9em; }
+                    .total-section .total { font-weight: bold; font-size: 1.1em; }
+                    .footer { text-align: center; margin-top: 20px; font-size: 0.8em; }
+                    @media print {
+                        @page { margin: 0; }
+                        body { margin: 0.5cm; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    ${market.logo_url ? `<img src="${market.logo_url}" alt="Logo">` : ''}
+                    <h2>${market.name}</h2>
+                    ${market.address ? `<p>${market.address}, ${market.city}</p>` : ''}
+                    ${market.cnpj ? `<p>CNPJ: ${market.cnpj}</p>` : ''}
+                    ${market.phone ? `<p>Tel: ${market.phone}</p>` : ''}
+                </div>
+                <hr>
+                <div class="info">
+                    <p>CUPOM NÃO FISCAL</p>
+                    <p>Data: ${new Date(saleCompletedData.created_at).toLocaleString('pt-BR')}</p>
+                </div>
+                <hr>
+                <table class="items-table">
+                    <thead><tr class="header-row"><th>Item</th><th>Qtd</th><th>Preço</th><th>Total</th></tr></thead>
+                    <tbody>
+                        ${saleCompletedData.items.map(item => `<tr><td>${item.name}</td><td>${item.qty}</td><td>${item.price.toFixed(2)}</td><td>${(item.price * item.qty).toFixed(2)}</td></tr>`).join('')}
+                    </tbody>
+                </table>
+                <hr>
+                <div class="total-section">
+                    ${saleCompletedData.discount ? `<p>Subtotal: R$ ${(saleCompletedData.total + saleCompletedData.discount.amount).toFixed(2)}</p><p>Desconto: - R$ ${saleCompletedData.discount.amount.toFixed(2)}</p>` : ''}
+                    <p>TOTAL: <span class="total">R$ ${saleCompletedData.total.toFixed(2)}</span></p>
+                    <p>Pagamento: ${saleCompletedData.payment_method.toUpperCase()}</p>
+                    ${saleCompletedData.payment_method === 'money' ? `<p>Recebido: R$ ${saleCompletedData.received.toFixed(2)}</p><p>Troco: R$ ${saleCompletedData.change.toFixed(2)}</p>` : ''}
+                </div>
+                <hr>
+                <div class="footer">
+                    <p>Obrigado pela preferência!</p>
+                </div>
+            </body>
+            </html>
+        `;
+
+        printWindow.document.write(receiptHTML);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+        }, 250);
     };
 
     const handleSubmit = async () => {
@@ -113,9 +208,8 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
                 items: cart, 
                 created_at: new Date().toISOString(), 
                 order_number: 0, 
-                // FIX: Changed id from string to number to match Sale type.
                 id: 0, 
-                market_id: 0 
+                market_id: user.market_id 
             });
         }
     };
@@ -137,11 +231,19 @@ const SaleCompletionModal: React.FC<SaleCompletionModalProps> = ({ isOpen, onClo
                     {saleCompletedData.change > 0 && (
                         <p className="text-lg font-bold">Troco: <span className="text-primary">R$ {saleCompletedData.change.toFixed(2)}</span></p>
                     )}
-                    <div className="flex gap-4 pt-4">
-                        <button onClick={onClose} className="flex-1 p-3 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700">Nova Venda</button>
-                        <button onClick={handleSendWhatsApp} className="flex-1 p-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 flex items-center justify-center gap-2">
+                    <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                        <button onClick={onClose} className="w-full p-3 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700">Nova Venda</button>
+                        <button onClick={handleSendWhatsApp} className="w-full p-3 bg-green-500 text-white font-bold rounded-lg hover:bg-green-600 flex items-center justify-center gap-2">
                             <Icon name="paper-airplane" className="w-5 h-5" />
-                            Enviar WhatsApp
+                            WhatsApp
+                        </button>
+                         <button onClick={handlePrintReceipt} className="w-full p-3 bg-blue-500 text-white font-bold rounded-lg hover:bg-blue-600 flex items-center justify-center gap-2">
+                            <Icon name="document-text" className="w-5 h-5" />
+                            Imprimir
+                        </button>
+                        <button onClick={() => addToast({ message: 'Funcionalidade de e-mail requer configuração de servidor.', type: 'info'})} className="w-full p-3 bg-orange-500 text-white font-bold rounded-lg hover:bg-orange-600 flex items-center justify-center gap-2">
+                           <Icon name="paper-airplane" className="w-5 h-5" />
+                            E-mail
                         </button>
                     </div>
                 </div>

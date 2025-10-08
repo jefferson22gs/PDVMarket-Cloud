@@ -8,6 +8,17 @@ export interface User {
     market_id: number;
 }
 
+export interface Market {
+    id: number;
+    name: string;
+    cnpj: string | null;
+    ie: string | null;
+    address: string | null;
+    city: string | null;
+    phone: string | null;
+    logo_url: string | null;
+}
+
 export type View = 'login' | 'pdv' | 'admin' | 'kitchen';
 
 export interface ToastMessage {
