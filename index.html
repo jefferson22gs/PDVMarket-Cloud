@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDVMarket Cloud Premium</title>
+    
+    <!-- PWA Tags -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#4287f5" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                DEFAULT: 'hsl(221, 83%, 53%)',
+                '50': 'hsl(221, 83%, 95%)',
+                '100': 'hsl(221, 83%, 90%)',
+                '200': 'hsl(221, 83%, 80%)',
+                '300': 'hsl(221, 83%, 70%)',
+                '400': 'hsl(221, 83%, 60%)',
+                '500': 'hsl(221, 83%, 53%)',
+                '600': 'hsl(221, 83%, 47%)',
+                '700': 'hsl(221, 83%, 42%)',
+                '800': 'hsl(221, 83%, 36%)',
+                '900': 'hsl(221, 83%, 31%)',
+              },
+              secondary: {
+                DEFAULT: 'hsl(160, 100%, 36%)',
+                '500': 'hsl(160, 100%, 36%)',
+              },
+              danger: {
+                DEFAULT: 'hsl(0, 84%, 60%)',
+                '500': 'hsl(0, 84%, 60%)',
+              },
+              warning: {
+                DEFAULT: 'hsl(39, 92%, 55%)',
+                '500': 'hsl(39, 92%, 55%)',
+              },
+            },
+            keyframes: {
+              'toast-in': {
+                'from': { transform: 'translateY(100%)', opacity: '0' },
+                'to': { transform: 'translateY(0)', opacity: '1' },
+              },
+              'toast-out': {
+                'from': { transform: 'translateY(0)', opacity: '1' },
+                'to': { transform: 'translateY(100%)', opacity: '0' },
+              },
+            },
+            animation: {
+              'toast-in': 'toast-in 0.5s ease-out forwards',
+              'toast-out': 'toast-out 0.5s ease-in forwards',
+            }
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .glass-effect {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      .dark .glass-effect {
+        background: rgba(17, 24, 39, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.22.0",
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.22",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.2.1",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0"
+  }
+}
+</script>
+</head>
+  <body class="bg-gray-100 dark:bg-gray-900">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    <!-- Dependencies -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <script src="https://unpkg.com/framer-motion@latest/dist/framer-motion.umd.js"></script>
+    <script type="module" src="https://unpkg.com/heroicons@2.1.1/24/outline/index.js"></script>
+  </body>
+</html>
